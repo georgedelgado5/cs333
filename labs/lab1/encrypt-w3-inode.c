@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <string.h>
+#include <fcntl.h>
 
 #define INPUT 'i'
 #define OUTPUT 'o'
@@ -45,6 +46,10 @@ int main(int argc, char *argv[])
                 }
                 break;
             case OUTPUT:
+                if(optarg == NULL)
+                {
+                    break;
+                }
                 strcpy(op_file_name, optarg);
                 break;
             case HELP:
@@ -79,11 +84,17 @@ int main(int argc, char *argv[])
         exit(EXIT_SUCCESS);
     }
 
-    //validate that an input file was given
-    if(ip_file_name)
-    {
-        ip_file = open( ,'r');
-    }
+    //from talk with Chaney
+    //use read() and write() -> gives number of bytes
+    //  -> may still need fgets for reading from stdin -> use whatever function can provide the data to a buffer and the size in bytes
+    //  -> we only want to write the number of bytes we read
+    //use stat() to get lower 3 bytes of inode for encryption/decryption key
+    //  -> babbage uses little endian -> lower means LSB which is to the left (first) -> first 3 bytes
+    //      -> says this is the hard part to get the 3 bytes 
+    //**** see man 3 stat for the stucture of an inode ****
+    //**** see man ? ? for data sizes in bytes/bits ****
+    //
+    // might not need [io]p_file[_name]
     
     return(EXIT_SUCCESS);
 }
