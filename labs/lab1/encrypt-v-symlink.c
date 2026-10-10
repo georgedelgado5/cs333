@@ -8,6 +8,7 @@
 
 int main(int argc, char *argv[])
 {
+    printf("argc: %d\nargv: %s\n", argc, argv[0]);
     
     return(EXIT_SUCCESS);
 }

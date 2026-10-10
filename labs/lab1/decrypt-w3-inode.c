@@ -1,6 +1,6 @@
 //George Delgado
 //cs333
-//encrypt-w3-inode
+//decrypt-w3-inode
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +8,7 @@
 
 int main(int argc, char *argv[])
 {
+    printf("argc: %d\nargv: %s\n", argc, argv[0]);
     
     return(EXIT_SUCCESS);
 }

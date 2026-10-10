@@ -18,7 +18,7 @@ PROG1= encrypt-w3-inode
 PROG2= decrypt-w3-inode
 PROG3= encrypt-v-symlink
 PROG4= decrypt-v-symlink
-PROGS= $(PROG1) #$(PROG2) $(PROG3) $(PROG4)
+PROGS= $(PROG1) $(PROG2) $(PROG3) $(PROG4)
 
 all: $(PROGS)
 
@@ -28,23 +28,23 @@ $(PROG1): $(PROG1).o
 $(PROG1).o: $(PROG1).c
 	$(CC) $(CFLAGS) -c $(PROG1).c
 
-#$(PROG2): $(PROG2).o
-#	$(CC) $(LDFLAGS) -o $(PROG2) $(PROG2).o
-#
-#$(PROG2).o: $(PROG2).c
-#	$(CC) $(CFLAGS) -c $(PROG2).c
-#
-#$(PROG3): $(PROG3).o
-#	$(CC) $(LDFLAGS) -o $(PROG3) $(PROG3).o
-#
-#$(PROG3).o: $(PROG3).c
-#	$(CC) $(CFLAGS) -c $(PROG3).c
-#
-#$(PROG4): $(PROG4).o
-#	$(CC) $(LDFLAGS) -o $(PROG4) $(PROG4).o
-#
-#$(PROG4).o: $(PROG4).c
-#	$(CC) $(CFLAGS) -c $(PROG4).c
+$(PROG2): $(PROG2).o
+	$(CC) $(LDFLAGS) -o $(PROG2) $(PROG2).o
+
+$(PROG2).o: $(PROG2).c
+	$(CC) $(CFLAGS) -c $(PROG2).c
+
+$(PROG3): $(PROG3).o
+	$(CC) $(LDFLAGS) -o $(PROG3) $(PROG3).o
+
+$(PROG3).o: $(PROG3).c
+	$(CC) $(CFLAGS) -c $(PROG3).c
+
+$(PROG4): $(PROG4).o
+	$(CC) $(LDFLAGS) -o $(PROG4) $(PROG4).o
+
+$(PROG4).o: $(PROG4).c
+	$(CC) $(CFLAGS) -c $(PROG4).c
 
 # add git gdb valgrind test
 .PHONY: all clean tar
