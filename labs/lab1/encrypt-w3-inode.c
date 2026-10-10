@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
     int opt = 0; 
    
     //input/output file descriptors (fd) 
-    //int ifd = 0;
+    int ifd = 0; //change to stdin macro
     int ofd = 0; 
     
     //open flags
@@ -39,6 +39,10 @@ int main(int argc, char *argv[])
     mode_t default_perms = umask(0);
     //file permissions: -rw-rw-r--
     mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
+
+    //struct for input/output file data
+    struct stat ip_file;
+    //struct stat op_file;
 
     //input/output file name
     char *ip_file_name = NULL; 
@@ -93,7 +97,7 @@ int main(int argc, char *argv[])
     {
         //add features for new file and existing file
 
-        //flags are for creating new file; write only, and add permissions
+        //flags are for creating new file; write only flag, and add permissions
         ofd = open(op_file_name, open_flags, file_perms);
         //reset perms
         umask(default_perms);
@@ -116,6 +120,7 @@ int main(int argc, char *argv[])
         {
             printf("\nThe input file is STDIN");
         }
+        //read direct from stdin and xor write to output file
     }
     else
     {
@@ -123,6 +128,13 @@ int main(int argc, char *argv[])
         if(is_verbose)
         {
             printf("\nThe input file is %s", ip_file_name);
+        }
+        //read direct from file and xor write to output file
+        ifd = open(ip_file_name, O_RDONLY);
+        if(fstat(ifd, &ip_file) == 0)
+        {
+            printf("\nFile size of %s is %ld", ip_file_name, ip_file.st_size);
+            printf("\ninode ID is %lu", ip_file.st_ino);
         }
     }
 
@@ -140,11 +152,6 @@ int main(int argc, char *argv[])
     //  a. as each byte is read, xor with low 3 inode id values and write to output file
     //
     
-    //from talk with Chaney
-    //use read() and write() -> gives number of bytes
-    //  -> may still need fgets for reading from stdin -> use whatever function can provide the data to a buffer and the size in bytes
-    //  -> see week-02.day-02 lecture slides for standard I/O
-    //  -> we only want to write the number of bytes we read
     //use stat() to get lower 3 bytes of inode for encryption/decryption key
     //  -> babbage uses little endian -> lower means LSB which is to the left (first) -> first 3 bytes
     //      -> says this is the hard part to get the 3 bytes 

@@ -1,0 +1,16 @@
+#linux files
+*~
+.directory
+
+#c compile
+*.obj
+*.o
+
+#.swp files
+*.swp
+*.swo
+
+#executables
+*.out
+*.exe
+
