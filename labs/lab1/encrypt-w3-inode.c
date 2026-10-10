@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 
 #define INPUT 'i'
 #define OUTPUT 'o'
@@ -29,8 +30,15 @@ int main(int argc, char *argv[])
     int opt = 0; 
    
     //input/output file descriptors (fd) 
-    int ifd = 0;
+    //int ifd = 0;
     int ofd = 0; 
+    
+    //open flags
+    int open_flags = (O_CREAT | O_WRONLY);
+    //clear perms with umask
+    mode_t default_perms = umask(0);
+    //file permissions: -rw-rw-r--
+    mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
 
     //input/output file name
     char *ip_file_name = NULL; 
@@ -57,15 +65,6 @@ int main(int argc, char *argv[])
                 break;
         }
     }
-    
-    //argv[0] is the name of the file and is argc at 1
-    if(!op_file_name || argc == 1)
-    {
-        // add help support 
-        fprintf(stderr, "Invalid argument. Option must be provided.\n");
-        fprintf(stderr, "Try %s [-h] for help.\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
 
     if(get_help)
     {
@@ -80,19 +79,24 @@ int main(int argc, char *argv[])
         printf("\t[-o] [REQUIRED] Encrypts to output file. Requires file name option.\n");
         exit(EXIT_SUCCESS);
     }
-
-    //check if file name was provided
-    if(!ip_file_name)
+    
+    //argv[0] is the name of the file and is argc at 1
+    if(!op_file_name || argc == 1)
     {
-        if(is_verbose)
-        {
-            printf("\nThe input file is STDIN");
-        }
+        // add help support 
+        fprintf(stderr, "Invalid argument. Option must be provided.\n");
+        fprintf(stderr, "Try %s [-h] for help.\n", argv[0]);
+        exit(EXIT_FAILURE);
     }
+
     //open new (output) file
     {
-        //flags are for creating new file; write only
-        ofd = open(op_file_name, O_CREAT | O_WRONLY);
+        //add features for new file and existing file
+
+        //flags are for creating new file; write only, and add permissions
+        ofd = open(op_file_name, open_flags, file_perms);
+        //reset perms
+        umask(default_perms);
         if(ofd == -1)
         {
             fprintf(stderr, "\nFailed to open %s", op_file_name);
@@ -108,10 +112,18 @@ int main(int argc, char *argv[])
     if(!ip_file_name)
     {
         //read from stdin
+        if(is_verbose)
+        {
+            printf("\nThe input file is STDIN");
+        }
     }
     else
     {
         //read from ip_file_name
+        if(is_verbose)
+        {
+            printf("\nThe input file is %s", ip_file_name);
+        }
     }
 
     //read and XOR input file to new output file
@@ -132,11 +144,26 @@ int main(int argc, char *argv[])
     //use read() and write() -> gives number of bytes
     //  -> may still need fgets for reading from stdin -> use whatever function can provide the data to a buffer and the size in bytes
     //  -> see week-02.day-02 lecture slides for standard I/O
-    //      -> fd = file descriptor info
     //  -> we only want to write the number of bytes we read
     //use stat() to get lower 3 bytes of inode for encryption/decryption key
     //  -> babbage uses little endian -> lower means LSB which is to the left (first) -> first 3 bytes
     //      -> says this is the hard part to get the 3 bytes 
-    
+
+    //close output file
+    if(close(ofd) == 0)
+    {
+        if(is_verbose)
+        {
+            printf("\n%s successfuly closed", op_file_name);
+        }
+    }
+    else
+    {
+        if(is_verbose)
+        {
+            fprintf(stderr, "\nFailed to close %s", op_file_name);
+        }
+        return(EXIT_FAILURE);
+    }
     return(EXIT_SUCCESS);
 }
