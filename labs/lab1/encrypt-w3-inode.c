@@ -21,7 +21,8 @@
 #define HELP 'h'
 #define VERBOSE 'v'
 #define CLEAR_PERMS 0
-#define MAX_BUFF_LEN 25000
+#define MAX_BUFF_LEN 10000000
+#define LOWER_THREE 3
 
 int main(int argc, char *argv[])
 {
@@ -30,6 +31,7 @@ int main(int argc, char *argv[])
     bool get_help = false;
     bool is_verbose = false;
     int opt = 0; 
+    unsigned char bytes[LOWER_THREE];
     
     //input/output file name
     char *ip_file_name = "STDIN"; //defaults 
@@ -178,11 +180,14 @@ int main(int argc, char *argv[])
         //move a single bit to 24 bit and flip bits (from 0 -23) by subtracting 1
         bit_mask = (1ul << 24) - 1; 
         key = (op_file.st_ino & bit_mask);
+        bytes[0] = (key & 0xFF);
+        bytes[1] = (key >> 8) & 0xFF;
+        bytes[2] = (key >> 16) & 0xFF;
 
         for(ssize_t i = 0; i < ip_bytes_read; i++)
         {
             //write to output file as xor every byte
-            op_buff[i] = (ip_buff[i] ^ bit_mask);
+            op_buff[i] = (ip_buff[i] ^ bytes[i % 3]);
         }
         op_bytes_read = write(op_fd, op_buff, ip_bytes_read);
         if(op_bytes_read == -1)
