@@ -57,11 +57,3 @@ tar: clean
 	rm -f $(TAR_FILE)
 	tar cvaf $(TAR_FILE) *.[c] [Mm]akefile
 	tar tvaf $(TAR_FILE)
-
-# add git
-#
-# add gdb -> add -tui for gui
-#
-# add valgrind
-#
-# add tests -> add targets for all or for individual test file
