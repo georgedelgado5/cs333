@@ -4,7 +4,7 @@
 //
 //Program will read input (either from a file named on the command line or 'stdin') and encrypt the file into the (required) named output file. 
 //
-//The encryption key (also the decryption key) are the low order three bytes from the 'inode' number of the input file.
+//The encryption key (also the decryption key) are the low order three bytes from the 'inode' number of the **output** file.
 //
 //stat(3) - for inode structure
 
@@ -21,6 +21,7 @@
 #define HELP 'h'
 #define VERBOSE 'v'
 #define CLEAR_PERMS 0
+#define MAX_BUFF_LEN 25000
 
 int main(int argc, char *argv[])
 {
@@ -45,8 +46,9 @@ int main(int argc, char *argv[])
     //file permissions: -rw-rw-r--
     mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
 
-    //struct for input inode
+    //struct for input/output inode
     struct stat ip_file;
+    struct stat op_file;
 
     //input/output bytes
     ssize_t ip_bytes_read = 0;
@@ -116,6 +118,10 @@ int main(int argc, char *argv[])
         {
             printf("\nThe output file is %s", op_file_name); 
         }
+        if(fstat(op_fd, &op_file) == -1)
+        {
+            fprintf(stderr, "\nFailed to access inode...");
+        }
     }
 
     //open input file
@@ -144,7 +150,16 @@ int main(int argc, char *argv[])
     //read from file
     {
         //read file/stdin
-        ip_bytes_read = read(ip_fd, ip_buff, ip_file.st_size);
+        if(ip_buff)
+        {
+            ip_bytes_read = read(ip_fd, ip_buff, ip_file.st_size);
+        }
+        else
+        {
+            ip_buff = malloc(MAX_BUFF_LEN + 1);
+            ip_bytes_read = read(ip_fd, ip_buff, MAX_BUFF_LEN + 1);    
+            op_buff = malloc(ip_bytes_read + 1);
+        }
         if(ip_bytes_read == -1)
         {
             fprintf(stderr, "\nFailed to read from %s", ip_file_name);
@@ -162,14 +177,14 @@ int main(int argc, char *argv[])
     {
         //move a single bit to 24 bit and flip bits (from 0 -23) by subtracting 1
         bit_mask = (1ul << 24) - 1; 
-        key = (ip_file.st_ino & bit_mask);
+        key = (op_file.st_ino & bit_mask);
 
         for(ssize_t i = 0; i < ip_bytes_read; i++)
         {
             //write to output file as xor every byte
             op_buff[i] = (ip_buff[i] ^ bit_mask);
         }
-        op_bytes_read = write(op_fd, op_buff, ip_file.st_size);
+        op_bytes_read = write(op_fd, op_buff, ip_bytes_read);
         if(op_bytes_read == -1)
         {
             fprintf(stderr, "\nFailed to write to %s", op_file_name);
@@ -200,6 +215,5 @@ int main(int argc, char *argv[])
     }
     free(ip_buff);
     free(op_buff);
-    printf("\nProgram successful!\n");
     return(EXIT_SUCCESS);
 }
