@@ -20,9 +20,9 @@
 #define OUTPUT 'o'
 #define HELP 'h'
 #define VERBOSE 'v'
-#define CLEAR_PERMS 0
-#define MAX_BUFF_LEN 10000000
-#define LOWER_THREE 3
+#define MAX_BUFF_LEN 10000000 //I don't know what size to default to...
+#define LOWER_THREE 3 //lower 3 bytes of inode id
+#define NUM_BITS_8 8
 
 int main(int argc, char *argv[])
 {
@@ -31,36 +31,26 @@ int main(int argc, char *argv[])
     bool get_help = false;
     bool is_verbose = false;
     int opt = 0; 
-    unsigned char bytes[LOWER_THREE];
     
     //input/output file name
-    char *ip_file_name = "STDIN"; //defaults 
+    char *ip_file_name = NULL; //defaults 
     char *op_file_name = NULL;
    
     //input/output file descriptors (fd) 
-    int ip_fd = STDIN_FILENO; //default to STDIN
+    int ip_fd = 0; //STDIN_FILENO; //default to STDIN
     int op_fd = 0; 
-    
-    //open flags
-    int open_flags = (O_CREAT | O_WRONLY);
-    //clear perms with umask and store default perms
-    mode_t default_perms = umask(CLEAR_PERMS);
-    //file permissions: -rw-rw-r--
-    mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
 
     //struct for input/output inode
     struct stat ip_file;
     struct stat op_file;
 
-    //input/output bytes
-    ssize_t ip_bytes_read = 0;
-    ssize_t op_bytes_read = 0;
+    //input bytes read
+    ssize_t ip_bytes_rd = 0;
+    
+    //input/output buffer
     char *ip_buff = NULL;
     char *op_buff = NULL;
 
-    //encryption key
-    unsigned long bit_mask = 0;
-    unsigned long key = 0;
                 
     //getopt
     while((opt = getopt(argc, argv, cmd_line_opt)) != -1)
@@ -108,9 +98,20 @@ int main(int argc, char *argv[])
 
     //open new (output) file
     {
+        //open flags
+        int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
+        //file permissions: -rw-rw-r--
+        mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
+        
+        //Man pages umask(2) state that a default set of permission are set when opening a file
+            //The return value of umask is the previous permission settings -> stored so they can be recovered?
+        //clear perms with umask and store default perms
+        //const mode_t CLEAR_PERMS = 0; 
+        //mode_t default_perms = umask(CLEAR_PERMS); //sets permissions to 0000 and stores previous perms -> now we can set to whatever we want
+
         op_fd = open(op_file_name, open_flags, file_perms);
-        //reset perms back to default perms
-        umask(default_perms);
+        //reset perms back to default perms after opening and setting perms
+        //umask(default_perms);
         if(op_fd == -1)
         {
             fprintf(stderr, "\nFailed to open %s\n", op_file_name);
@@ -124,10 +125,20 @@ int main(int argc, char *argv[])
         {
             fprintf(stderr, "\nFailed to access inode...");
         }
+
+        /*
+        // ******Or we can use fchmod which is easier to work -> umask was good practice but quite annoying to work with *******
+        //set file permissions using fchmod after file has been created
+        */
+        if(fchmod(op_fd, file_perms) == -1)
+        {
+            fprintf(stderr, "\nFailed to set file permissions...");
+        }
     }
 
     //open input file
-    if(strcmp(ip_file_name, "STDIN") != 0)
+    //if(strcmp(ip_file_name, "STDIN") != 0)
+    if(ip_file_name)
     {
         ip_fd = open(ip_file_name, O_RDONLY);
         if(ip_fd == -1)
@@ -148,21 +159,24 @@ int main(int argc, char *argv[])
         ip_buff = malloc(ip_file.st_size + 1);
         op_buff = malloc(ip_file.st_size + 1);
     }
-
-    //read from file
+    else
     {
-        //read file/stdin
+        ip_file_name = "STDIN";
+    }
+
+    //read input file/stdin
+    {
         if(ip_buff)
         {
-            ip_bytes_read = read(ip_fd, ip_buff, ip_file.st_size);
+            ip_bytes_rd = read(ip_fd, ip_buff, ip_file.st_size);
         }
         else
         {
             ip_buff = malloc(MAX_BUFF_LEN + 1);
-            ip_bytes_read = read(ip_fd, ip_buff, MAX_BUFF_LEN + 1);    
-            op_buff = malloc(ip_bytes_read + 1);
+            ip_bytes_rd = read(ip_fd, ip_buff, MAX_BUFF_LEN + 1);    
+            op_buff = malloc(ip_bytes_rd + 1);
         }
-        if(ip_bytes_read == -1)
+        if(ip_bytes_rd == -1)
         {
             fprintf(stderr, "\nFailed to read from %s", ip_file_name);
             exit(EXIT_FAILURE);
@@ -174,31 +188,29 @@ int main(int argc, char *argv[])
     }
 
     //xor input
-    //from Chaney "sizeof" executable -> ino_t is 8 bytes/64 bits -> lower 3 bytes/24 bits -> other 5 bytes/40 bytes
-    //unsigned long is 8 bytes -> leading bit is unsigned
+    //from Chaney "sizeof" executable -> ino_t is 8 bytes/64 bits -> lower 3 bytes/24 bits -> little endian system
     {
-        //move a single bit to 24 bit and flip bits (from 0 -23) by subtracting 1
-        bit_mask = (1ul << 24) - 1; 
-        key = (op_file.st_ino & bit_mask);
-        bytes[0] = (key & 0xFF);
-        bytes[1] = (key >> 8) & 0xFF;
-        bytes[2] = (key >> 16) & 0xFF;
+        const unsigned char CHAR_BYTE = 0xFF; //a single byte (1's) that is used to XOR each of the lower 3 bytes
+        unsigned long bit_mask = 0xFFFFFF; //sets the first 24 bits to 1's
+        unsigned long key = (op_file.st_ino & bit_mask); //returns lower 3 bytes
+        ssize_t op_bytes_wr = 0;
 
-        for(ssize_t i = 0; i < ip_bytes_read; i++)
+        for(ssize_t i = 0; i < ip_bytes_rd; i++)
         {
-            //write to output file as xor every byte
-            op_buff[i] = (ip_buff[i] ^ bytes[i % 3]);
+            unsigned char encrypt_byte = (key >> (NUM_BITS_8 * (i % 3))) & CHAR_BYTE;
+            //XOR to output buffer byte-by-byte
+            op_buff[i] = (ip_buff[i] ^ encrypt_byte);
         }
-        op_bytes_read = write(op_fd, op_buff, ip_bytes_read);
-        if(op_bytes_read == -1)
+            
+        op_bytes_wr = write(op_fd, op_buff, ip_bytes_rd);
+        if(op_bytes_wr == -1)
         {
             fprintf(stderr, "\nFailed to write to %s", op_file_name);
             exit(EXIT_FAILURE);
         }
         if(is_verbose)
         {
-            printf("\nNumber of bytes written: %ld", op_bytes_read);
-            printf("\nEncryption key is %lu", key);
+            printf("\nNumber of bytes written: %ld", op_bytes_wr);
         }
     }
     
