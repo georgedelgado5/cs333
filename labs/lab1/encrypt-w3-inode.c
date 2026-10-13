@@ -20,24 +20,24 @@
 #define OUTPUT 'o'
 #define HELP 'h'
 #define VERBOSE 'v'
+#define OPTIONS "i:o:vh"
 #define MAX_BUFF_LEN 10000000 //I don't know what size to default to...
 #define LOWER_THREE 3 //lower 3 bytes of inode id
 #define NUM_BITS_8 8
 
+void help(char *);
+
 int main(int argc, char *argv[])
 {
-    //command line option
-    char *cmd_line_opt = "i:o:vh";
-    bool get_help = false;
     bool is_verbose = false;
     int opt = 0; 
-    
-    //input/output file name
-    char *ip_file_name = NULL; //defaults 
+
+    //input/output file name 
+    char *ip_file_name = NULL;
     char *op_file_name = NULL;
    
     //input/output file descriptors (fd) 
-    int ip_fd = 0; //STDIN_FILENO; //default to STDIN
+    int ip_fd = STDIN_FILENO; //default to STDIN
     int op_fd = 0; 
 
     //struct for input/output inode
@@ -50,10 +50,22 @@ int main(int argc, char *argv[])
     //input/output buffer
     char *ip_buff = NULL;
     char *op_buff = NULL;
-
                 
+    if(argc < 2)
+    {
+        fprintf(stderr, "No options provided...\n");
+        help(argv[0]);
+        exit(EXIT_FAILURE);
+    }
+    if(argc < 3 && strcmp(argv[1], "-v") == 0)
+    {
+        fprintf(stderr, "File option must be provided...\n");
+        help(argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
     //getopt
-    while((opt = getopt(argc, argv, cmd_line_opt)) != -1)
+    while((opt = getopt(argc, argv, OPTIONS)) != -1)
     {
         switch(opt)
         {
@@ -64,7 +76,8 @@ int main(int argc, char *argv[])
                 op_file_name = optarg;
                 break;
             case HELP:
-                get_help = true;
+                help(argv[0]);
+                exit(EXIT_SUCCESS);
                 break;
             case VERBOSE:
                 is_verbose = true;
@@ -74,28 +87,55 @@ int main(int argc, char *argv[])
         }
     }
 
-    if(get_help)
+    //open input file
+    if(ip_file_name)
     {
-        printf("Description:");
-        printf("\nReads input from file name provided or stdin, if no file name is provided, and encrypts contents to an output file.\n");
-        printf("\nUsage:\n");
-        printf("\t%s [OPTION]\n", argv[0]);
-        printf("Options:\n");
-        printf("\t[-h] Print help information.\n");
-        printf("\t[-v] Describe process being performed.\n");
-        printf("\t[-i] [OPTIONAL] Read in file name. If no file name is provided, stdin is used to read in data.\n");
-        printf("\t[-o] [REQUIRED] Encrypts to output file. Requires file name option.\n");
-        exit(EXIT_SUCCESS);
+        ip_fd = open(ip_file_name, O_RDONLY);
+        if(ip_fd == -1)
+        {
+            fprintf(stderr, "\nFailed to open %s\n", ip_file_name);
+            exit(EXIT_FAILURE);
+        }
+        //read from ip_file_name
+        if(is_verbose)
+        {
+            printf("\nSuccessfully opened %s...", ip_file_name);
+        }
+        if(fstat(ip_fd, &ip_file) == -1)
+        {
+            fprintf(stderr, "\nFailed to access inode...");
+        }
+        //dynamic allocation of memory to match size of input file -> get st_size
+        ip_buff = malloc(ip_file.st_size + 1);
+        op_buff = malloc(ip_file.st_size + 1);
     }
     
-    //argv[0] is the name of the file and is argc at 1
-    if(!op_file_name || argc == 1)
+    //read input file/stdin
     {
-        // add help support 
-        fprintf(stderr, "Try %s [-h] for help.\n", argv[0]);
-        exit(EXIT_FAILURE);
+        //from stdin
+        if(ip_fd == STDIN_FILENO)
+        {
+            ip_buff = malloc(MAX_BUFF_LEN + 1);
+            ip_bytes_rd = read(ip_fd, ip_buff, MAX_BUFF_LEN + 1); 
+            op_buff = malloc(ip_bytes_rd + 1);
+            ip_file_name = "stdin";
+        }
+        //from file input
+        else
+        {
+            ip_bytes_rd = read(ip_fd, ip_buff, ip_file.st_size);
+        }
+        if(ip_bytes_rd == -1)
+        {
+            fprintf(stderr, "\nFailed to read from %s", ip_file_name);
+            exit(EXIT_FAILURE);
+        }
+        if(is_verbose)
+        {
+            printf("\nReading from %s...", ip_file_name);
+        } 
     }
-
+    
     //open new (output) file
     {
         //open flags
@@ -134,57 +174,6 @@ int main(int argc, char *argv[])
         {
             fprintf(stderr, "\nFailed to set file permissions...");
         }
-    }
-
-    //open input file
-    //if(strcmp(ip_file_name, "STDIN") != 0)
-    if(ip_file_name)
-    {
-        ip_fd = open(ip_file_name, O_RDONLY);
-        if(ip_fd == -1)
-        {
-            fprintf(stderr, "\nFailed to open %s\n", ip_file_name);
-            exit(EXIT_FAILURE);
-        }
-        //read from ip_file_name
-        if(is_verbose)
-        {
-            printf("\nSuccessfully opened %s...", ip_file_name);
-        }
-        if(fstat(ip_fd, &ip_file) == -1)
-        {
-            fprintf(stderr, "\nFailed to access inode...");
-        }
-        //dynamic allocation of memory to match size of input file -> get st_size
-        ip_buff = malloc(ip_file.st_size + 1);
-        op_buff = malloc(ip_file.st_size + 1);
-    }
-    else
-    {
-        ip_file_name = "STDIN";
-    }
-
-    //read input file/stdin
-    {
-        if(ip_buff)
-        {
-            ip_bytes_rd = read(ip_fd, ip_buff, ip_file.st_size);
-        }
-        else
-        {
-            ip_buff = malloc(MAX_BUFF_LEN + 1);
-            ip_bytes_rd = read(ip_fd, ip_buff, MAX_BUFF_LEN + 1);    
-            op_buff = malloc(ip_bytes_rd + 1);
-        }
-        if(ip_bytes_rd == -1)
-        {
-            fprintf(stderr, "\nFailed to read from %s", ip_file_name);
-            exit(EXIT_FAILURE);
-        }
-        if(is_verbose)
-        {
-            printf("\nReading from %s...", ip_file_name);
-        } 
     }
 
     //xor input
@@ -233,4 +222,19 @@ int main(int argc, char *argv[])
     free(ip_buff);
     free(op_buff);
     return(EXIT_SUCCESS);
+}
+
+//print help message
+//argument is program name -> argv[0]
+void help(char *prog_name)
+{
+    printf("Description:");
+    printf("\nReads input from file name provided or stdin, if no file name is provided, and encrypts contents to an output file.\n");
+    printf("\nUsage:\n");
+    printf("\t%s [OPTION]\n", prog_name);
+    printf("Options:\n");
+    printf("\t[-h] Print help information.\n");
+    printf("\t[-v] Describe process being performed.\n");
+    printf("\t[-i] [FILE] Read in file name. If no file name is provided, stdin is used to read in data.\n");
+    printf("\t[-o] [FILE] Encrypts to output file. Requires file name option.\n");
 }
