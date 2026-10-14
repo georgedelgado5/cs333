@@ -1,12 +1,15 @@
+!/.gitignore
+
 #linux files
 *~
 .directory
 
 #relative directories
 /video_assignments
+/lab0
 
 #hidden files
-*.
+**.*
 
 #c compile
 *.obj
