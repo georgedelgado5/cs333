@@ -2,7 +2,7 @@
 //cs333
 //encrypt-w3-inode
 //
-//Program will read input (either from a file named on the command line or 'stdin') and encrypt the file into the (required) named output file. 
+//Program reads an input file or stdin, and encrypts the data into an output file.
 //
 //The encryption key (also the decryption key) are the low order three bytes from the 'inode' number of the **output** file.
 //
@@ -184,6 +184,7 @@ int main(int argc, char *argv[])
         unsigned long key = (op_file.st_ino & bit_mask); //returns lower 3 bytes
         ssize_t op_bytes_wr = 0;
 
+        //use sizeof or strlen to get the key length to replace the hardcoded '3'
         for(ssize_t i = 0; i < ip_bytes_rd; i++)
         {
             unsigned char encrypt_byte = (key >> (NUM_BITS_8 * (i % 3))) & CHAR_BYTE;
@@ -203,7 +204,7 @@ int main(int argc, char *argv[])
         }
     }
     
-    //close output file
+    //close files
     if(close(op_fd) == 0 && close(ip_fd) == 0)
     {
         if(is_verbose)
@@ -229,12 +230,12 @@ int main(int argc, char *argv[])
 void help(char *prog_name)
 {
     printf("Description:");
-    printf("\nReads input from file name provided or stdin, if no file name is provided, and encrypts contents to an output file.\n");
+    printf("\nReads an input file or stdin, and encrypts contents to an output file.\n");
     printf("\nUsage:\n");
     printf("\t%s [OPTION]\n", prog_name);
     printf("Options:\n");
+    printf("\t[-i] [FILE] The name of the input file or stdin if no file name is provided.\n");
+    printf("\t[-o] [FILE] The name of the output file. (Required)\n");
     printf("\t[-h] Print help information.\n");
     printf("\t[-v] Describe process being performed.\n");
-    printf("\t[-i] [FILE] Read in file name. If no file name is provided, stdin is used to read in data.\n");
-    printf("\t[-o] [FILE] Encrypts to output file. Requires file name option.\n");
 }

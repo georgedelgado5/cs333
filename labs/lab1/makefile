@@ -1,7 +1,6 @@
 #George Delgado
 #cs333
 
-CLASS= cs333
 ASSIGNMENT= lab1
 
 CC= gcc
@@ -12,7 +11,7 @@ CFLAGS= $(DEBUG) -Wall -Wshadow -Wunreachable-code -Wredundant-decls \
 		-Wno-return-local-addr -Wunsafe-loop-optimizations \
 		-Wuninitialized -Werror -Wextra
 LDFLAGS=
-PERMS= og+x
+PERMS= g+x
 
 PROG1= encrypt-w3-inode
 PROG2= decrypt-w3-inode
@@ -50,9 +49,9 @@ $(PROG4).o: $(PROG4).c
 .PHONY: all clean tar
 
 clean:
-	rm -f $(PROGS) *.o *~ \#*
+	rm -f $(PROGS) *.o *~ \#* #*.txt
 
-TAR_FILE= ${LOGNAME}-$(CLASS)-$(ASSIGNMENT).tar.gz
+TAR_FILE= ${LOGNAME}-$(ASSIGNMENT).tar.gz
 tar: clean
 	rm -f $(TAR_FILE)
 	tar cvaf $(TAR_FILE) *.[c] [Mm]akefile
