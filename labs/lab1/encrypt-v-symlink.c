@@ -5,16 +5,6 @@
 //Program reads an input file or stdin, and encrypts the data into an output file.
 //
 //The encryption key (also the decryption key) is the name of the **symbolic link** pointing to the output file.
-//
-//symlink(2) - to generate symlink for new output file
-//lstat(2) - to get info about the link
-//readlink(2) - to read the contents of a sybmolic link (the path to which the link points to)
-//??possibly use dirname(3), basename(3), readdir(3), or nftw(3)
-//
-//A symbolic-link is a directory entry that maps a name to a path.
-//The symbolic link is a pointer to another directory entry.
-
-//use nftw(3) or readdir(3)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +13,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <ctype.h>
 
 #define INPUT 'i'
 #define OUTPUT 'o'
@@ -32,8 +23,11 @@
 #define OPTIONS "i:o:s:vh"
 #define MAX_BUFF_LEN 10000000 //I don't know what size to default to...
 #define NUM_BITS_8 8
+#define ALPHABET_NUMS 26
 
 void help(char *);
+//Vigenere cipher
+char encrypt(char, char);
 
 int main(int argc, char *argv[])
 {
@@ -55,10 +49,13 @@ int main(int argc, char *argv[])
 
     //input bytes read
     ssize_t ip_bytes_rd = 0;
+
+    //output bytes write
+    ssize_t op_bytes_wr = 0;
     
     //input/output buffer
-    char *ip_buff = NULL;
-    char *op_buff = NULL;
+    unsigned char *ip_buff = NULL;
+    unsigned char *op_buff = NULL;
                 
     if(argc < 2)
     {
@@ -97,6 +94,13 @@ int main(int argc, char *argv[])
             default:
                 break;
         }
+    }
+
+    if(!op_file_name || !sl_file_name)
+    {
+        fprintf(stderr, "\nNames for both [-o] and [-s] are required...");
+        help(argv[0]);
+        exit(EXIT_FAILURE);
     }
     
     //open input file
@@ -177,50 +181,49 @@ int main(int argc, char *argv[])
         }
         
         //generate symbolic link to output file
-        //IMPORTANT: symbolic link size when using ls -ls will show the size of the file path name not the actual size of the file
+        unlink(sl_file_name);
+        {
+            if(is_verbose)
+            {
+                fprintf(stderr, "\nUnlink old link...");
+                exit(EXIT_FAILURE);
+            }
+        }
         if(symlink(op_file_name, sl_file_name) == -1)
         {
             fprintf(stderr, "\nFailed to create symbolic link...");
+            unlink(sl_file_name);
             exit(EXIT_FAILURE);
         }
     }
 
-    //get encryption key
+    //encrypt file to op_buff
     {
-        //using Vigenere cipher we set a|A = 0, b|B = 1, c|C = 2, ..., y|Y = 24, z|Z = 25
-        //  -> use ascii math to find the difference between a character
-        //  -> should be case insensitive
-        //  -> Example: key = "hello" and string = "dog"
-        //      -> 1. Determine the position of the current key character    
-        //          -> "h" is 72 (ascii) and in standard alphabet -> 72 - 65 = 7* 
-        //              -> *This will be one minus the actual position because we start indexing at 0
-        //          -> The value of "h" is the number of characters we shift (encrypt) the input file character
-        //              -> "d" is 68 (ascii) and in std. -> 68 - 65 = 3
-        //              -> Left shift means move the character "d"s position left by 7
-        //                  -> (3 - 7); if negative take the absolute value and subtract by "z" 90 (ascii)
-        //                      -> 25 - (3 - 7) = 21
-        //                      -> 21 is (21 + 65) = 86 -> "v"
-        //                  -> The encrypted character will now be a "v"
-        //              -> Right shift means we move the character "d"s position right by 7
-        //                  -> (3 + 7) = 10 
-        //                  -> (10 + 65) = 75 (ascii)
-        //                  -> 75 is "k"
-        //                  -> The encrypted character will now be a "k"
-        //      -> 2. Repeat this step for every character in the input file
-        //      -> 3. If the end of the key is met before we reach the end of the input file character
-        //          -> loop from the beginning again
-        //
-        //  Tools needed:
-        //      - string to ascii number
-        //      - ascii number to string
-        //      - ?case conversion:
-        //          - toupper()
-        //          - tolower()
-
-
+        int j = 0;
+        for(ssize_t i = 0; i < ip_bytes_rd; i++)
+        {
+            if(sl_file_name[j] == '\0')
+            {
+                j = 0;
+            }
+            op_buff[i] = encrypt(sl_file_name[j], ip_buff[i]);
+            j++;
+        }
     }
 
     //use encryption key to write to output file
+    {
+        op_bytes_wr = write(op_fd, op_buff, ip_bytes_rd);
+        if(op_bytes_wr == -1)
+        {
+            fprintf(stderr, "\nFailed to write to %s", op_file_name);
+            exit(EXIT_FAILURE);
+        }
+        if(is_verbose)
+        {
+            printf("\nNumber of bytes written: %ld", op_bytes_wr);
+        }
+    }
 
     //close files
     if(close(op_fd) == 0 && close(ip_fd) == 0)
@@ -242,6 +245,15 @@ int main(int argc, char *argv[])
     free(op_buff);
     
     return(EXIT_SUCCESS);
+}
+
+char encrypt(char key, char input)
+{
+    //wrap around 0 - 255 with unsigned
+    unsigned char index = (unsigned char) input;
+    unsigned char shift = (unsigned char) key;
+    unsigned char encrypt = (unsigned char) (index + shift);
+    return (char) encrypt;
 }
 
 //print help message
