@@ -2,6 +2,12 @@
 *~
 .directory
 
+#relative directories
+/video_assignments
+
+#hidden files
+*.
+
 #c compile
 *.obj
 *.o
