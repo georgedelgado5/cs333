@@ -5,8 +5,7 @@
 .directory
 
 #relative directories
-#/video_assignments
-/lab0/*
+/labs/lab0
 
 #hidden files
 .*
