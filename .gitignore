@@ -5,11 +5,20 @@
 .directory
 
 #relative directories
-/video_assignments
-/lab0
+#/video_assignments
+/lab0/*
 
 #hidden files
-**.*
+.*
+
+#ignore tar files
+*.tar*
+
+#ignore .txt files
+*.txt
+
+#ignore bash scripts/files
+*.bash
 
 #c compile
 *.obj
