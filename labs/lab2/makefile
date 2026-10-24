@@ -45,7 +45,6 @@ $(PROG1).o: $(PROG1).c
 #$(PROG4).o: $(PROG4).c
 #	$(CC) $(CFLAGS) -c $(PROG4).c
 
-# add git gdb valgrind test
 .PHONY: all clean tar
 
 clean:
