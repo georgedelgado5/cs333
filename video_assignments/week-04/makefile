@@ -4,12 +4,8 @@
 ASSIGNMENT= tprimes
 
 CC= gcc
-#DEBUG= -g3
-CFLAGS= #$(DEBUG) -Wall -Wshadow -Wunreachable-code -Wredundant-decls \
-#		-Wmissing-declarations -Wold-style-definition \
-#		-Wmissing-prototypes -Wdeclaration-after-statement \
-#		-Wno-return-local-addr -Wunsafe-loop-optimizations \
-#		-Wuninitialized -Werror -Wextra
+DEBUG= -g3 -O0
+CFLAGS= $(DEBUG) -Wall -Werror
 LDFLAGS=
 #PERMS= g+x
 
