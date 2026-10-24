@@ -82,6 +82,7 @@ static void *find_primes(long begin)
             }
         }
     }
+    exit(EXIT_SUCCESS);
 }
 
 //print help message
