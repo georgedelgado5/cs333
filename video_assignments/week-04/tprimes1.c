@@ -19,6 +19,7 @@
 
 static long upper_bound = 0;
 static void *find_primes(long);
+void help(char *);
 
 int main(int argc, char *argv[])
 {
@@ -71,7 +72,7 @@ static void *find_primes(long begin)
         
         if(candidate > 1)
         {
-            for(log factor = 2; factor < candidate; ++factor)
+            for(long factor = 2; factor < candidate; ++factor)
             {
                 if((candidate % factor) == 0)
                 {
@@ -87,11 +88,9 @@ static void *find_primes(long begin)
 //argument is program name -> argv[0]
 void help(char *prog_name)
 {
-    printf("Description:");
-    printf("\nReads an input file or stdin, and encrypts contents to an output file.\n");
     printf("\nUsage:\n");
     printf("\t%s [OPTION]\n", prog_name);
     printf("Options:\n");
-    printf("\t[-u NUM] Number of upper bound for largest prime we 
+    printf("\t[-u NUM] Number of upper bound for largest prime we desire.\n");
     printf("\t[-h] Print help information.\n");
 }
