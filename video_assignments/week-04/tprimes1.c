@@ -15,7 +15,7 @@
 
 #define UPPER 'u'
 #define HELP 'h'
-#define OPTIONS "u:vh"
+#define OPTIONS "u:h"
 
 static long upper_bound = 0;
 static void *find_primes(long);
@@ -44,10 +44,24 @@ int main(int argc, char *argv[])
             case HELP:
                 help(argv[0]);
                 exit(EXIT_SUCCESS);
-                break;
             default:
-                break;
+                help(argv[0]);
+                exit(EXIT_FAILURE);
         }
+    }
+    
+    if(optind < argc)
+    {
+        fprintf(stderr, "Valid option must be provided.\n");
+        help(argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    if(upper_bound == 0)
+    {
+        fprintf(stderr, "Upper bound option [-u Num] is required.\n");
+        help(argv[0]);
+        exit(EXIT_FAILURE);
     }
 
     if(upper_bound < 0)
@@ -80,8 +94,16 @@ static void *find_primes(long begin)
                     break;
                 }
             }
+            if(is_prime)
+            {
+                printf("%ld\n", candidate);
+                found++;
+            }
         }
+        candidate +=1;
     }
+    fprintf(stderr, "%2ld  %8ld\n", begin, found);
+
     exit(EXIT_SUCCESS);
 }
 
