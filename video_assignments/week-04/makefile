@@ -57,5 +57,5 @@ clean:
 TAR_FILE= ${LOGNAME}-$(ASSIGNMENT).tar.gz
 tar: clean
 	rm -f $(TAR_FILE)
-	tar cvaf $(TAR_FILE) *.[c]#[Mm]akefile
+	tar cvaf $(TAR_FILE) *.[c] #[Mm]akefile
 	tar tvaf $(TAR_FILE)
