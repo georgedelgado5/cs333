@@ -115,7 +115,7 @@ static void *find_primes(long begin)
     et = elapse_time(&et0, &et1);
     fprintf(stderr, "%2ld  %8ld et: %10.4lf\n", begin, found, et);
     
-    exit(EXIT_SUCCESS);
+    return NULL; 
 }
 
 static double elapse_time(struct timespec *t0, struct timespec *t1)
