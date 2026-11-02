@@ -65,6 +65,20 @@ int main(int argc, char *argv[])
                 break;
         }
     }
+
+    // Thoughts on what needs to happen next
+    // - use read and write for input/output file
+    //  - Important: use a 1000 char buffer; use a while loop when reading/writing
+    // - use pthreads
+    //  - mutex for keeping threads and for concurrency
+    //  
+    //
+    //  1. Input/Output
+    //      - match input hash files with corresponding password files
+    //      - send to stdout or output file
+    //          - output should be two options cracked and failed
+    //
+    //  - use argon2_verify() to 
     
     exit(EXIT_SUCCESS);
 }
