@@ -6,7 +6,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <pthreads.h>
 
+// getopt options
 #define HASHES 'h'
 #define PLAIN 'p'
 #define OUTPUT 'o'
@@ -16,6 +18,10 @@
 #define VERBOSE 'v'
 #define HELP 'H'
 #define OPTIONS "h:p:olt::SvH"
+
+// thread requirements
+#define DEFAULT_THREADS 1
+#define MAX_THREADS 16
 
 void help(char *);
 
