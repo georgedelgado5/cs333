@@ -1,23 +1,28 @@
 #George Delgado
+#gdelgado@pdx.edu
 #cs333
 
 ASSIGNMENT= lab2
 
 CC= gcc
 DEBUG= -g3
-CFLAGS= $(DEBUG) -Wall -Wshadow -Wunreachable-code -Wredundant-decls \
-		-Wmissing-declarations -Wold-style-definition \
-		-Wmissing-prototypes -Wdeclaration-after-statement \
-		-Wno-return-local-addr -Wunsafe-loop-optimizations \
-		-Wuninitialized -Werror -Wextra
+WFLAGS= -Wall -Wextra -Wshadow -Wunreachable-code \
+		-Wredundant-decls -Wmissing-declarations \
+		- Wold-style-definition -Wmissing-prototypes \
+		- Wdeclaration-after-statement -Wno-return-local-addr \
+		- Wunsafe-loop-optimization -Wuninitialized -Werror \
+		- Wno-unused-parameter \
+		- Wno-string-compare -Wno-stringop-overflow \
+		- Wno-string-overread -Wno-stringop-truncation \
+CFLAGS= $(DEBUG) $(WFLAGS)
 LDFLAGS=
 PERMS= g+x
 
-PROG1=
+PROG1= psargon
 PROG2=
 PROG3=
 PROG4=
-PROGS= $(PROG1)#$(PROG2) $(PROG3) $(PROG4)
+PROGS= $(PROG1)
 
 all: $(PROGS)
 
@@ -26,24 +31,6 @@ $(PROG1): $(PROG1).o
 
 $(PROG1).o: $(PROG1).c
 	$(CC) $(CFLAGS) -c $(PROG1).c
-
-#$(PROG2): $(PROG2).o
-#	$(CC) $(LDFLAGS) -o $(PROG2) $(PROG2).o
-#
-#$(PROG2).o: $(PROG2).c
-#	$(CC) $(CFLAGS) -c $(PROG2).c
-#
-#$(PROG3): $(PROG3).o
-#	$(CC) $(LDFLAGS) -o $(PROG3) $(PROG3).o
-#
-#$(PROG3).o: $(PROG3).c
-#	$(CC) $(CFLAGS) -c $(PROG3).c
-#
-#$(PROG4): $(PROG4).o
-#	$(CC) $(LDFLAGS) -o $(PROG4) $(PROG4).o
-#
-#$(PROG4).o: $(PROG4).c
-#	$(CC) $(CFLAGS) -c $(PROG4).c
 
 .PHONY: all clean tar
 
