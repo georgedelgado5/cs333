@@ -16,6 +16,12 @@
 #ignore .txt files
 *.txt
 
+#ignore files from labs
+*.[SD]err
+*.[SD]out
+*.j1bin
+*.s1txt
+
 #ignore bash scripts/files
 *.bash
 
