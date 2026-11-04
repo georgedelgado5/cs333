@@ -30,7 +30,6 @@
 
 // thread requirements
 #define DEFAULT_THREADS 1
-#define MAX_THREADS 16
 
 void help(char *);
 
@@ -38,9 +37,16 @@ int main(int argc, char *argv[])
 {
     bool is_verbose = false;
     int opt = 0;
-    int num_threads = MAX_THREADS;
+    int num_threads = DEFAULT_THREADS;
     char alloc_type = DYNAMIC;
+
+    //buffer
+    char *ip_buf_arg2 = NULL;
+    char *ip_buf_ptxt = NULL;
+    ssize_t ip_bytes_arg2 = 0;
+    ssize_t ip_bytes_ptxt = 0;
                         
+    // open flags
     int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
     //file permissions
     mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
@@ -55,12 +61,13 @@ int main(int argc, char *argv[])
     struct stat ip_stat_arg2;
     struct stat ip_stat_ptxt;
     struct stat op_stat;
+    struct stat log_stat;
 
     //file descriptors (fd)
     int ip_fd_arg2 = 0;
     int ip_fd_ptxt = 0;
-    int op_fd = STDOUT_FILENO;
-    int log_fd = STDERR_FILENO;
+    int op_fd = STDOUT_FILENO; //default is stdout
+    int log_fd = STDERR_FILENO; //default is stderr
  
     if(argc < 2)
     {
@@ -94,6 +101,22 @@ int main(int argc, char *argv[])
                     {
                         printf("\nSuccessfully opened %s...", ip_file_name_arg2);
                     }
+                    if(fstat(ip_fd_arg2, &ip_stat_arg2) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to access inode...");
+                    }
+                    ip_buf_arg2 = malloc(ip_stat_arg2.st_size + 1);
+                    ip_bytes_arg2 = read(ip_fd_arg2, ip_buf_arg2, ip_stat_arg2.st_size);
+                    if(ip_bytes_arg2)
+                    {
+                        fprintf(stderr, "\nFailed to read in bytes...\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    if(close(ip_fd_arg2) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to close hash file...\n");
+                        exit(EXIT_FAILURE);
+                    }
                 }
                 break;
             case PLAIN:
@@ -109,6 +132,22 @@ int main(int argc, char *argv[])
                     if(is_verbose)
                     {
                         printf("\nSuccessfully opened %s...", ip_file_name_ptxt);
+                    }
+                    if(fstat(ip_fd_ptxt, &ip_stat_ptxt) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to access inode...");
+                    }
+                    ip_buf_ptxt = malloc(ip_stat_ptxt.st_size + 1);
+                    ip_bytes_ptxt = read(ip_fd_ptxt, ip_buf_ptxt, ip_stat_ptxt.st_size);
+                    if(ip_bytes_ptxt)
+                    {
+                        fprintf(stderr, "\nFailed to read in bytes...\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    if(close(ip_fd_ptxt) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to close file...\n");
+                        exit(EXIT_FAILURE);
                     }
                 }
                 break;
@@ -126,6 +165,11 @@ int main(int argc, char *argv[])
                     {
                         fprintf(stderr, "\nFailed to set file permissions...");
                     }
+                    if(fstat(op_fd, &op_stat) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to access inode...");
+                    }
+                    //add option to write to stdout or output file
                 }
                 break;
             case LOGFILE:
@@ -142,6 +186,11 @@ int main(int argc, char *argv[])
                     {
                         fprintf(stderr, "\nFailed to set file permissions...");
                     }
+                    if(fstat(log_fd, &log_stat) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to access inode...");
+                    }
+                    //add option to write to stderr or log file
                 }
                 break;
             case THREADS:
@@ -158,6 +207,8 @@ int main(int argc, char *argv[])
                 break;
             case STATIC:
                 alloc_type = STATIC;
+                //implement a static approach
+                //  watch tprimes videos to review dynmic/static threads
                 break;
             case VERBOSE:
                 is_verbose = true;
@@ -172,23 +223,27 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Thoughts on what needs to happen next
-    // - use read and write for input/output file
-    //  - Important: use a 1000 char buffer; use a while loop when reading/writing
-    // - use pthreads
-    //  - mutex for keeping threads and for concurrency
-    //  
+    //from Chaney conversation... There are 3 major steps to this program
+    //  1. complete getopt and malloc
+    //  2. implement threads
+    //  3. close out threads with join
     //
-    //  1. Input/Output
-    //      - match input hash files with corresponding password files
-    //      - send to stdout or output file
-    //          - output should be two options cracked and failed
-    //
-    //  - use argon2_verify() to 
-    
+    //  At some point in between steps 1 and 2, a ragged array needs to be created
+
+    if(alloc_type == STATIC)
+    {
+        //do something
+    }
+    else
+    {
+        //do something with DYNAMIC allocating
+    }
+
+    //print variables to avoid make errors -> temporary
+    printf("\nThe number of threads to use is %d\n", num_threads);
 
     //close files
-    if(close(op_fd) == 0 && close(ip_fd_arg2) == 0 && close(ip_fd_ptxt) == 0)
+    if(close(op_fd) == 0 && close(ip_fd_arg2) == 0 && close(ip_fd_ptxt) == 0 && close(log_fd) == 0)
     {
         if(is_verbose)
         {
@@ -203,6 +258,9 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
     }
+
+    free(ip_buf_arg2);
+    free(ip_buf_ptxt);
 
     return(EXIT_SUCCESS);
 }

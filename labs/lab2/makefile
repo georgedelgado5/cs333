@@ -6,13 +6,13 @@ ASSIGNMENT= lab2
 
 CC= gcc
 DEBUG= -g3
-#WERROR= -Werror
+WERROR= -Werror
 WFLAGS= -Wall $(WERROR) -Wshadow -Wunreachable-code \
 		-Wredundant-decls -Wmissing-declarations \
 		-Wold-style-definition -Wmissing-prototypes \
 		-Wdeclaration-after-statement -Wno-return-local-addr \
 		-Wunsafe-loop-optimizations -Wuninitialized -Werror \
-		-Wno-unused-parameter \
+		-Wno-unused-parameter -Wextra \
 		-Wno-string-compare -Wno-stringop-overflow \
 		-Wno-stringop-overread -Wno-stringop-truncation
 CFLAGS= $(DEBUG) $(WFLAGS)
