@@ -1,4 +1,4 @@
-G/George Delgado
+//George Delgado
 //gdelgado@pdx.edu
 //cs333
 //lab2 - prince of aragon
@@ -41,9 +41,9 @@ int main(int argc, char *argv[])
     int num_threads = MAX_THREADS;
     char alloc_type = DYNAMIC;
                         
-    //file permissions
     int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
-    mode_t file_perms = (S_IRUSR | S_IWUSR | SIRGRP | SIWGRP | S_IROTH);
+    //file permissions
+    mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 
     //file names
     char *ip_file_name_arg2 = NULL;
@@ -52,9 +52,9 @@ int main(int argc, char *argv[])
     char *log_file_name = NULL;
 
     //structs
-    struct stat ip_file_arg2;
-    struct stat ip_file_ptxt;
-    struct stat op_file;
+    struct stat ip_stat_arg2;
+    struct stat ip_stat_ptxt;
+    struct stat op_stat;
 
     //file descriptors (fd)
     int ip_fd_arg2 = 0;
@@ -186,7 +186,25 @@ int main(int argc, char *argv[])
     //
     //  - use argon2_verify() to 
     
-    exit(EXIT_SUCCESS);
+
+    //close files
+    if(close(op_fd) == 0 && close(ip_fd_arg2) == 0 && close(ip_fd_ptxt) == 0)
+    {
+        if(is_verbose)
+        {
+            printf("\nFiles successfuly closed\n");
+        }
+        else
+        {
+            if(is_verbose)
+            {
+                fprintf(stderr, "\nFailed to close files\n");
+            }
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    return(EXIT_SUCCESS);
 }
 
 //print help message
