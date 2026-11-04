@@ -6,19 +6,20 @@ ASSIGNMENT= lab2
 
 CC= gcc
 DEBUG= -g3
-WFLAGS= -Wall -Wextra -Wshadow -Wunreachable-code \
+#WERROR= -Werror
+WFLAGS= -Wall $(WERROR) -Wshadow -Wunreachable-code \
 		-Wredundant-decls -Wmissing-declarations \
-		- Wold-style-definition -Wmissing-prototypes \
-		- Wdeclaration-after-statement -Wno-return-local-addr \
-		- Wunsafe-loop-optimization -Wuninitialized -Werror \
-		- Wno-unused-parameter \
-		- Wno-string-compare -Wno-stringop-overflow \
-		- Wno-string-overread -Wno-stringop-truncation \
+		-Wold-style-definition -Wmissing-prototypes \
+		-Wdeclaration-after-statement -Wno-return-local-addr \
+		-Wunsafe-loop-optimizations -Wuninitialized -Werror \
+		-Wno-unused-parameter \
+		-Wno-string-compare -Wno-stringop-overflow \
+		-Wno-stringop-overread -Wno-stringop-truncation
 CFLAGS= $(DEBUG) $(WFLAGS)
 LDFLAGS=
 PERMS= g+x
 
-PROG1= psargon
+PROG1= prince_of_aragon
 PROG2=
 PROG3=
 PROG4=
@@ -35,7 +36,7 @@ $(PROG1).o: $(PROG1).c
 .PHONY: all clean tar
 
 clean:
-	rm -f $(PROGS) *.o *~ \#* #*.txt
+	rm -f $(PROGS) *.o *~ *.h *.txt *.[SD]err *.[SD]out \#*
 
 TAR_FILE= ${LOGNAME}-$(ASSIGNMENT).tar.gz
 tar: clean
