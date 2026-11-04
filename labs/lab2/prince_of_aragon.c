@@ -2,6 +2,8 @@
 //gdelgado@pdx.edu
 //cs333
 //lab2 - prince of aragon
+//
+//This program reads in two required input files, hash and plain text. The goal of this program is to identify if a password/key/code exists in the hashed and plain text file
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +15,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 
-// getopt options
+//getopt options
 #define HASHES 'h'
 #define PLAIN 'p'
 #define OUTPUT 'o'
@@ -28,8 +30,14 @@
 #define DYNAMIC 'D'
 #define MAX_BUF_LEN 1000
 
-// thread requirements
+//thread macros
 #define DEFAULT_THREADS 1
+#define MAX_THREADS 16
+
+//thread utilities
+static int num_threads = DEFAULT_THREADS;
+//static long index = 0;
+//static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 void help(char *);
 
@@ -37,14 +45,19 @@ int main(int argc, char *argv[])
 {
     bool is_verbose = false;
     int opt = 0;
-    int num_threads = DEFAULT_THREADS;
     char alloc_type = DYNAMIC;
 
     //buffer
     char *ip_buf_arg2 = NULL;
     char *ip_buf_ptxt = NULL;
+    //char *op_buf = NULL;
+    //char *log_buf = NULL;
+
+    //bytes
     ssize_t ip_bytes_arg2 = 0;
     ssize_t ip_bytes_ptxt = 0;
+    //ssize_t op_buf = 0;
+    //ssize_t log_buf = 0;
                         
     // open flags
     int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
@@ -82,73 +95,67 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    // getopt
+    //getopt
     while((opt = getopt(argc, argv, OPTIONS)) != -1)
     {
         switch(opt)
         {
             case HASHES:
-                if(optarg)
+                ip_file_name_arg2 = optarg;
+                ip_fd_arg2 = open(ip_file_name_arg2, O_RDONLY);
+                if(ip_fd_arg2 == -1)
                 {
-                    ip_file_name_arg2 = optarg;
-                    ip_fd_arg2 = open(ip_file_name_arg2, O_RDONLY);
-                    if(ip_fd_arg2 == -1)
-                    {
-                        fprintf(stderr, "\nFailed to open %s\n", ip_file_name_arg2);
-                        exit(EXIT_FAILURE);
-                    }
-                    if(is_verbose)
-                    {
-                        printf("\nSuccessfully opened %s...", ip_file_name_arg2);
-                    }
-                    if(fstat(ip_fd_arg2, &ip_stat_arg2) == -1)
-                    {
-                        fprintf(stderr, "\nFailed to access inode...");
-                    }
-                    ip_buf_arg2 = malloc(ip_stat_arg2.st_size + 1);
-                    ip_bytes_arg2 = read(ip_fd_arg2, ip_buf_arg2, ip_stat_arg2.st_size);
-                    if(ip_bytes_arg2)
-                    {
-                        fprintf(stderr, "\nFailed to read in bytes...\n");
-                        exit(EXIT_FAILURE);
-                    }
-                    if(close(ip_fd_arg2) == -1)
-                    {
-                        fprintf(stderr, "\nFailed to close hash file...\n");
-                        exit(EXIT_FAILURE);
-                    }
+                    fprintf(stderr, "\nFailed to open %s\n", ip_file_name_arg2);
+                    exit(EXIT_FAILURE);
+                }
+                if(is_verbose)
+                {
+                    printf("\nSuccessfully opened %s...", ip_file_name_arg2);
+                }
+                if(fstat(ip_fd_arg2, &ip_stat_arg2) == -1)
+                {
+                    fprintf(stderr, "\nFailed to access inode...");
+                }
+                ip_buf_arg2 = malloc(ip_stat_arg2.st_size + 1);
+                ip_bytes_arg2 = read(ip_fd_arg2, ip_buf_arg2, ip_stat_arg2.st_size);
+                if(ip_bytes_arg2)
+                {
+                    fprintf(stderr, "\nFailed to read in bytes...\n");
+                    exit(EXIT_FAILURE);
+                }
+                if(close(ip_fd_arg2) == -1)
+                {
+                    fprintf(stderr, "\nFailed to close hash file...\n");
+                    exit(EXIT_FAILURE);
                 }
                 break;
             case PLAIN:
-                if(optarg)
+                ip_file_name_ptxt = optarg;
+                ip_fd_ptxt = open(ip_file_name_ptxt, O_RDONLY);
+                if(ip_fd_ptxt == -1)
                 {
-                    ip_file_name_ptxt = optarg;
-                    ip_fd_ptxt = open(ip_file_name_ptxt, O_RDONLY);
-                    if(ip_fd_ptxt == -1)
-                    {
-                        fprintf(stderr, "\nFailed to open %s\n", ip_file_name_ptxt);
-                        exit(EXIT_FAILURE);
-                    }
-                    if(is_verbose)
-                    {
-                        printf("\nSuccessfully opened %s...", ip_file_name_ptxt);
-                    }
-                    if(fstat(ip_fd_ptxt, &ip_stat_ptxt) == -1)
-                    {
-                        fprintf(stderr, "\nFailed to access inode...");
-                    }
-                    ip_buf_ptxt = malloc(ip_stat_ptxt.st_size + 1);
-                    ip_bytes_ptxt = read(ip_fd_ptxt, ip_buf_ptxt, ip_stat_ptxt.st_size);
-                    if(ip_bytes_ptxt)
-                    {
-                        fprintf(stderr, "\nFailed to read in bytes...\n");
-                        exit(EXIT_FAILURE);
-                    }
-                    if(close(ip_fd_ptxt) == -1)
-                    {
-                        fprintf(stderr, "\nFailed to close file...\n");
-                        exit(EXIT_FAILURE);
-                    }
+                    fprintf(stderr, "\nFailed to open %s\n", ip_file_name_ptxt);
+                    exit(EXIT_FAILURE);
+                }
+                if(is_verbose)
+                {
+                    printf("\nSuccessfully opened %s...", ip_file_name_ptxt);
+                }
+                if(fstat(ip_fd_ptxt, &ip_stat_ptxt) == -1)
+                {
+                    fprintf(stderr, "\nFailed to access inode...");
+                }
+                ip_buf_ptxt = malloc(ip_stat_ptxt.st_size + 1);
+                ip_bytes_ptxt = read(ip_fd_ptxt, ip_buf_ptxt, ip_stat_ptxt.st_size);
+                if(ip_bytes_ptxt)
+                {
+                    fprintf(stderr, "\nFailed to read in bytes...\n");
+                    exit(EXIT_FAILURE);
+                }
+                if(close(ip_fd_ptxt) == -1)
+                {
+                    fprintf(stderr, "\nFailed to close file...\n");
+                    exit(EXIT_FAILURE);
                 }
                 break;
             case OUTPUT:
@@ -171,6 +178,10 @@ int main(int argc, char *argv[])
                     }
                     //add option to write to stdout or output file
                 }
+                else
+                {
+                    printf("\nNo argument provided with option [-o]. STDOUT will be used to write to...\n");
+                }
                 break;
             case LOGFILE:
                 if(optarg)
@@ -192,6 +203,10 @@ int main(int argc, char *argv[])
                     }
                     //add option to write to stderr or log file
                 }
+                else
+                {
+                    printf("\nNo argument provided with option [-l]. STDERR will be used to log...\n");
+                }
                 break;
             case THREADS:
                 if(!optarg)
@@ -199,14 +214,23 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "Number of threads is required...\n");
                     help(argv[0]);
                     exit(EXIT_FAILURE);
+                    //update to default to 1 thread
                 }
                 else
                 {
                     num_threads = atoi(optarg);
+                    if(is_verbose)
+                    {
+                        printf("\nNumber of threads to use is %d\n", num_threads);
+                    }
                 }
                 break;
             case STATIC:
                 alloc_type = STATIC;
+                if(is_verbose)
+                {
+                    printf("\nAllocation type is static...\n");
+                }
                 //implement a static approach
                 //  watch tprimes videos to review dynmic/static threads
                 break;
@@ -221,6 +245,12 @@ int main(int argc, char *argv[])
                 help(argv[0]);
                 break;
         }
+    }
+
+    if((num_threads < 0) || (num_threads > MAX_THREADS))
+    {
+        fprintf(stderr, "Invalid value for number of threads %d\n", num_threads);
+        exit(EXIT_FAILURE);
     }
 
     //from Chaney conversation... There are 3 major steps to this program
@@ -238,9 +268,6 @@ int main(int argc, char *argv[])
     {
         //do something with DYNAMIC allocating
     }
-
-    //print variables to avoid make errors -> temporary
-    printf("\nThe number of threads to use is %d\n", num_threads);
 
     //close files
     if(close(op_fd) == 0 && close(ip_fd_arg2) == 0 && close(ip_fd_ptxt) == 0 && close(log_fd) == 0)
@@ -274,8 +301,8 @@ void help(char *prog_name)
     printf("\nUsage:\n");
     printf("\t%s [OPTION]\n", prog_name);
     printf("Options:\n");
-    printf("\t[-h] Specify the name of the input file of argon2 hashes.\n");
-    printf("\t[-p] Specify the name of the input file of plaintext passwords.\n");
+    printf("\t[-h] (Required) name of the input file of argon2 hashes.\n");
+    printf("\t[-p] (Required) name of the input file of plaintext passwords.\n");
     printf("\t[-o] Specify the name of the output file. Defaults to stdout.\n");
     printf("\t[-l] Specify the name of the log file. Defaults to stderr.\n");
     printf("\t[-t] Specify the number of threads to use. Defaults to '1' thread.\n");
