@@ -36,7 +36,7 @@ $(PROG1).o: $(PROG1).c
 .PHONY: all clean tar
 
 clean:
-	rm -f $(PROGS) *.o *~ *.h *.txt *.[SD]err *.[SD]out \#*
+	rm -f $(PROGS) *.o *~ *.h *.txt *.[SD]err *.[SD]out *.[SD]crack *.[SD]diff *.tot *.thds *.err *.out \#*
 
 TAR_FILE= ${LOGNAME}-$(ASSIGNMENT).tar.gz
 tar: clean

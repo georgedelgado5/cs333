@@ -28,7 +28,7 @@
 
 //other macros
 #define DYNAMIC 'D'
-#define MAX_BUF_LEN 1000
+#define MAX_BUF_LEN 1024 //standard byte buf size 2^10
 
 //thread macros
 #define DEFAULT_THREADS 1
@@ -50,14 +50,10 @@ int main(int argc, char *argv[])
     //buffer
     char *ip_buf_arg2 = NULL;
     char *ip_buf_ptxt = NULL;
-    //char *op_buf = NULL;
-    //char *log_buf = NULL;
 
     //bytes
     ssize_t ip_bytes_arg2 = 0;
     ssize_t ip_bytes_ptxt = 0;
-    //ssize_t op_buf = 0;
-    //ssize_t log_buf = 0;
                         
     // open flags
     int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
@@ -65,22 +61,20 @@ int main(int argc, char *argv[])
     mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 
     //file names
-    char *ip_file_name_arg2 = NULL;
-    char *ip_file_name_ptxt = NULL;
     char *op_file_name = NULL; 
     char *log_file_name = NULL;
 
     //structs
-    struct stat ip_stat_arg2;
-    struct stat ip_stat_ptxt;
-    struct stat op_stat;
-    struct stat log_stat;
+    struct stat file_stat;
 
     //file descriptors (fd)
-    int ip_fd_arg2 = 0;
-    int ip_fd_ptxt = 0;
+    int ip_fd = 0;
     int op_fd = STDOUT_FILENO; //default is stdout
     int log_fd = STDERR_FILENO; //default is stderr
+
+    //ragged arrays
+    char **rarray_arg2 = NULL;
+    char **rarray_ptxt = NULL;
  
     if(argc < 2)
     {
@@ -101,66 +95,77 @@ int main(int argc, char *argv[])
         switch(opt)
         {
             case HASHES:
-                ip_file_name_arg2 = optarg;
-                ip_fd_arg2 = open(ip_file_name_arg2, O_RDONLY);
-                if(ip_fd_arg2 == -1)
+                //malloc a ragged array 
                 {
-                    fprintf(stderr, "\nFailed to open %s\n", ip_file_name_arg2);
-                    exit(EXIT_FAILURE);
-                }
-                if(is_verbose)
-                {
-                    printf("\nSuccessfully opened %s...", ip_file_name_arg2);
-                }
-                if(fstat(ip_fd_arg2, &ip_stat_arg2) == -1)
-                {
-                    fprintf(stderr, "\nFailed to access inode...");
-                }
-                ip_buf_arg2 = malloc(ip_stat_arg2.st_size + 1);
-                ip_bytes_arg2 = read(ip_fd_arg2, ip_buf_arg2, ip_stat_arg2.st_size);
-                if(ip_bytes_arg2)
-                {
-                    fprintf(stderr, "\nFailed to read in bytes...\n");
-                    exit(EXIT_FAILURE);
-                }
-                if(close(ip_fd_arg2) == -1)
-                {
-                    fprintf(stderr, "\nFailed to close hash file...\n");
-                    exit(EXIT_FAILURE);
+                    //open file
+                    ip_fd = open(optarg, O_RDONLY);
+                    if(ip_fd == -1)
+                    {
+                        fprintf(stderr, "\nFailed to open %s\n", optarg);
+                        exit(EXIT_FAILURE);
+                    }
+                    if(is_verbose)
+                    {
+                        printf("\nSuccessfully opened %s...", optarg);
+                    }
+                    //get file size
+                    if(fstat(ip_fd, &file_stat) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to access inode...");
+                    }
+                    ip_buf_arg2 = malloc(file_stat.st_size + 1);
+                    ip_bytes_arg2 = read(ip_fd, ip_buf_arg2, file_stat.st_size);
+                    if(ip_bytes_arg2)
+                    {
+                        fprintf(stderr, "\nFailed to read in bytes...\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    //close file
+                    if(close(ip_fd) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to close hash file...\n");
+                        exit(EXIT_FAILURE);
+                    }
                 }
                 break;
             case PLAIN:
-                ip_file_name_ptxt = optarg;
-                ip_fd_ptxt = open(ip_file_name_ptxt, O_RDONLY);
-                if(ip_fd_ptxt == -1)
+                //malloc a ragged array 
                 {
-                    fprintf(stderr, "\nFailed to open %s\n", ip_file_name_ptxt);
-                    exit(EXIT_FAILURE);
-                }
-                if(is_verbose)
-                {
-                    printf("\nSuccessfully opened %s...", ip_file_name_ptxt);
-                }
-                if(fstat(ip_fd_ptxt, &ip_stat_ptxt) == -1)
-                {
-                    fprintf(stderr, "\nFailed to access inode...");
-                }
-                ip_buf_ptxt = malloc(ip_stat_ptxt.st_size + 1);
-                ip_bytes_ptxt = read(ip_fd_ptxt, ip_buf_ptxt, ip_stat_ptxt.st_size);
-                if(ip_bytes_ptxt)
-                {
-                    fprintf(stderr, "\nFailed to read in bytes...\n");
-                    exit(EXIT_FAILURE);
-                }
-                if(close(ip_fd_ptxt) == -1)
-                {
-                    fprintf(stderr, "\nFailed to close file...\n");
-                    exit(EXIT_FAILURE);
+                    //open file
+                    ip_fd = open(optarg, O_RDONLY);
+                    if(ip_fd == -1)
+                    {
+                        fprintf(stderr, "\nFailed to open %s\n", optarg);
+                        exit(EXIT_FAILURE);
+                    }
+                    if(is_verbose)
+                    {
+                        printf("\nSuccessfully opened %s...", optarg);
+                    }
+                    //get file size
+                    if(fstat(ip_fd, &file_stat) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to access inode...");
+                    }
+                    ip_buf_ptxt = malloc(file_stat.st_size + 1);
+                    ip_bytes_ptxt = read(ip_fd, ip_buf_ptxt, file_stat.st_size);
+                    if(ip_bytes_ptxt)
+                    {
+                        fprintf(stderr, "\nFailed to read in bytes...\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    //close file
+                    if(close(ip_fd) == -1)
+                    {
+                        fprintf(stderr, "\nFailed to close file...\n");
+                        exit(EXIT_FAILURE);
+                    }
                 }
                 break;
             case OUTPUT:
                 if(optarg)
                 {
+                    //open file
                     op_file_name = optarg;
                     op_fd = open(op_file_name, open_flags, file_perms);
                     if(op_fd == -1)
@@ -168,11 +173,13 @@ int main(int argc, char *argv[])
                         fprintf(stderr, "\nFailed to open %s\n", op_file_name);
                         exit(EXIT_FAILURE);
                     }
+                    //change file permissions
                     if(fchmod(op_fd, file_perms) == -1)
                     {
                         fprintf(stderr, "\nFailed to set file permissions...");
                     }
-                    if(fstat(op_fd, &op_stat) == -1)
+                    //get file size
+                    if(fstat(op_fd, &file_stat) == -1)
                     {
                         fprintf(stderr, "\nFailed to access inode...");
                     }
@@ -186,6 +193,7 @@ int main(int argc, char *argv[])
             case LOGFILE:
                 if(optarg)
                 {
+                    //open file
                     log_file_name = optarg;
                     log_fd = open(log_file_name, open_flags, file_perms);
                     if(log_fd == -1)
@@ -193,11 +201,13 @@ int main(int argc, char *argv[])
                         fprintf(stderr, "\nFailed to open %s\n", log_file_name);
                         exit(EXIT_FAILURE);
                     }
+                    //change file permissions
                     if(fchmod(log_fd, file_perms) == -1)
                     {
                         fprintf(stderr, "\nFailed to set file permissions...");
                     }
-                    if(fstat(log_fd, &log_stat) == -1)
+                    //get file size
+                    if(fstat(log_fd, &file_stat) == -1)
                     {
                         fprintf(stderr, "\nFailed to access inode...");
                     }
@@ -270,7 +280,7 @@ int main(int argc, char *argv[])
     }
 
     //close files
-    if(close(op_fd) == 0 && close(ip_fd_arg2) == 0 && close(ip_fd_ptxt) == 0 && close(log_fd) == 0)
+    if(close(op_fd) == 0 && close(log_fd) == 0)
     {
         if(is_verbose)
         {
