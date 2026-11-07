@@ -20,7 +20,7 @@
 //  - Google searches include AI generated answers, stack overflow, and reddit...
 //      - I'm sad to say that most of my google searches were for "dumb" searches such as data type byte size and basic examples of library calls
 //      - As much as I like reading man pages (I've actually learned to appreciate them), I sometimes need help with example code (more on the syntax side)
-//          - Like who though it was a good idea to create size_t AND ssize_t -> me no read good; me read one or two 's'? Too many double takes >!00!<
+//          - Like who thought it was a good idea to create size_t AND ssize_t -> me no read good; me read one or two 's'? Too many double takes >!00!<
 //              - Honestly, sometimes I'm just bad at logic. I guess it doesn't help to be doing this at 1am with only 5 hours of sleep...
 //          - One example that was helpful was the man pages for getline(3)
 //          - More often man pages doesn't have "good" examples... I need to get "gooder"... story of my life
@@ -35,6 +35,8 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <pthread.h>
+//#include <argon2.h>
+#include "argon2.h"
 
 //getopt options
 #define HASHES 'h'
@@ -47,51 +49,51 @@
 #define HELP 'H'
 #define OPTIONS "h:p:olt::SvH"
 
-//other macros
+// macros
 #define DYNAMIC 'D'
-
-//thread macros
 #define DEFAULT_THREADS 1
+#define BUF_SIZE 1000
 
 //thread utilities
 static int num_threads = DEFAULT_THREADS;
 //static long index = 0;
 //static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-// open flags
-static int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
-//file permissions
-static mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 
 void help(char *);
-static int create_file(char *);
+static FILE *create_file(char *);
+static int argon2(FILE *, FILE *);
 
 //======================= Chaney source code w/mods ===========================
 static char **create_line_array(char *, int);
 static int count_lines(char *);
 static char **create_ragged_array(char *, int *);
 //======================= Chaney source code w/mods ===========================
+    
+//open flags
+//static int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
+//file permissions
+static mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+static ssize_t fst = 0;
 
 int main(int argc, char *argv[])
 {
+    //get file size
+    ssize_t hfst;
+    ssize_t pfst;
+    
     bool is_verbose = false;
     int opt = 0;
     char alloc_type = DYNAMIC;
     
-    //file descriptors (fd)
-    int op_fd = STDOUT_FILENO; //default is stdout
-    int log_fd = STDERR_FILENO; //default is stderr
+    //file descriptors
+    //int opfd = STDOUT_FILENO; //default is stdout
 
-    int num_lines = 0;
-
-    /*
-    //file names
-    char *op_file_name = NULL; 
-    char *log_file_name = NULL;
-    */
+    FILE *opf = NULL;
+    FILE *logf = NULL;
 
     //ragged arrays
-    char **rarray_arg2 = NULL;
-    char **rarray_ptxt = NULL;
+    char **harray = NULL; //hash ragged array
+    char **parray = NULL; //plain text ragged array
  
     if(argc < 2)
     {
@@ -109,101 +111,47 @@ int main(int argc, char *argv[])
     //getopt
     while((opt = getopt(argc, argv, OPTIONS)) != -1)
     {
+        int num_lines = 0;
         switch(opt)
         {
             case HASHES:
-                rarray_arg2 = create_ragged_array(optarg, &num_lines);
+                harray = create_ragged_array(optarg, &num_lines);
+                hfst = fst; 
                 break;
             case PLAIN:
-                rarray_ptxt = create_ragged_array(optarg, &num_lines);
+                parray = create_ragged_array(optarg, &num_lines);
+                pfst = fst;
                 break;
             case OUTPUT:
                 if(optarg)
                 {
-                    /*
-                    //open file
-                    op_file_name = optarg;
-                    op_fd = open(op_file_name, open_flags, file_perms);
-                    if(op_fd == -1)
-                    {
-                        fprintf(stderr, "\nFailed to open %s\n", op_file_name);
-                        exit(EXIT_FAILURE);
-                    }
-                    //change file permissions
-                    if(fchmod(op_fd, file_perms) == -1)
-                    {
-                        fprintf(stderr, "\nFailed to set file permissions...");
-                    }
-                    //get file size
-                    if(fstat(op_fd, &file_stat) == -1)
-                    {
-                        fprintf(stderr, "\nFailed to access inode...");
-                    }
-                    //add option to write to stdout or output file
-                    */
-                   op_fd = create_file(optarg);
+                    //file created - no memory allocated
+                    opf = create_file(optarg);
                 }
                 else
                 {
-                    printf("\nNo argument provided with option [-o]. STDOUT will be used to write to...\n");
+                    opf = stdout;
                 }
                 break;
             case LOGFILE:
                 if(optarg)
                 {
-                    /*
-                    //open file
-                    log_file_name = optarg;
-                    log_fd = open(log_file_name, open_flags, file_perms);
-                    if(log_fd == -1)
-                    {
-                        fprintf(stderr, "\nFailed to open %s\n", log_file_name);
-                        exit(EXIT_FAILURE);
-                    }
-                    //change file permissions
-                    if(fchmod(log_fd, file_perms) == -1)
-                    {
-                        fprintf(stderr, "\nFailed to set file permissions...");
-                    }
-                    //get file size
-                    if(fstat(log_fd, &file_stat) == -1)
-                    {
-                        fprintf(stderr, "\nFailed to access inode...");
-                    }
-                    //add option to write to stderr or log file
-                    */
-                    log_fd = create_file(optarg);
+                    //file created - no memory allocated
+                    logf = create_file(optarg);
                 }
                 else
                 {
-                    printf("\nNo argument provided with option [-l]. STDERR will be used to log...\n");
+                    logf = stderr;
                 }
                 break;
             case THREADS:
-                if(!optarg)
-                {
-                    fprintf(stderr, "Number of threads is required...\n");
-                    help(argv[0]);
-                    exit(EXIT_FAILURE);
-                    //update to default to 1 thread
-                }
-                else
+                if(optarg)
                 {
                     num_threads = atoi(optarg);
-                    if(is_verbose)
-                    {
-                        printf("\nNumber of threads to use is %d\n", num_threads);
-                    }
                 }
                 break;
             case STATIC:
                 alloc_type = STATIC;
-                if(is_verbose)
-                {
-                    printf("\nAllocation type is static...\n");
-                }
-                //implement a static approach
-                //  watch tprimes videos to review dynmic/static threads
                 break;
             case VERBOSE:
                 is_verbose = true;
@@ -220,28 +168,47 @@ int main(int argc, char *argv[])
 
     if(num_threads < 0)
     {
-        dprintf(log_fd, "Invalid value for number of threads %d\n", num_threads);
+        fprintf(logf, "Invalid value for number of threads %d\n", num_threads);
+        fclose(logf);
         exit(EXIT_FAILURE);
     }
 
-    //from Chaney conversation... There are 3 major steps to this program
-    //  1. complete getopt and malloc
-    //  2. implement threads
-    //  3. close out threads with join
-    //
-    //  At some point in between steps 1 and 2, a ragged array needs to be created
-
-    if(alloc_type == STATIC)
+    //allocate memory for both output file and log file if they exist
     {
-        //do something
-    }
-    else
-    {
-        //do something with DYNAMIC allocating
+        ssize_t size = 0;
+        if(hfst > pfst)
+        {
+            size = hfst;
+        }
+        size = pfst;
+
+        //allocate memory for both output file and log file
+        if(opf != stdout)
+        {
+            opf = malloc(size + 1);
+        }
+        if(logf != stderr)
+        {
+            logf = malloc(size + 1);
+        }
     }
 
-    //close files
-    if(close(op_fd) == 0 && close(log_fd) == 0)
+    //run static or dynamic threading
+    {
+        if(alloc_type == STATIC)
+        {
+            //do static allocation threading here
+            argon2(opf, logf);
+        }
+        else
+        {
+            //do dynamic allocation threading here
+            argon2(opf, logf);
+        }
+    }
+
+    //close output file
+    if(fclose(opf) == 0)
     {
         if(is_verbose)
         {
@@ -251,14 +218,32 @@ int main(int argc, char *argv[])
         {
             if(is_verbose)
             {
-                dprintf(log_fd, "\nFailed to close files\n");
+                fprintf(logf, "\nFailed to close files\n");
             }
             exit(EXIT_FAILURE);
         }
     }
 
-    free(rarray_arg2);
-    free(rarray_ptxt);
+    //close log file
+    if(fclose(logf) == 0)
+    {
+        if(is_verbose)
+        {
+            printf("\nFiles successfuly closed\n");
+        }
+        else
+        {
+            if(is_verbose)
+            {
+                fprintf(stderr, "\nFailed to close files\n");
+            }
+            exit(EXIT_FAILURE);
+        }
+    }
+    
+
+    free(harray);
+    free(parray);
 
     return(EXIT_SUCCESS);
 }
@@ -282,35 +267,63 @@ void help(char *prog_name)
     printf("\t[-H] Print help information.\n");
 }
 
-static int create_file(char *filename)
+// taking inspiration from Chaney create_ragged_array
+static FILE *create_file(char *filename)
 {
-    struct stat file_stat;
     char *ip_string = NULL;
-    int ipfd = -1;
+    FILE *opf = NULL;
     
     ip_string = filename;
-    ipfd = open(ip_string, open_flags, file_perms);
-    if(ipfd < 0)
+    opf = fopen(ip_string, "w");
+    if(!opf)
     {
         fprintf(stderr, "\nFailed to open %s\n", ip_string);
         exit(EXIT_FAILURE);
     }
     //change file permissions
-    if(fchmod(ipfd, file_perms) == -1)
+    if(chmod(ip_string, file_perms) == -1)
     {
-        fprintf(stderr, "\nFailed to set file permissions...");
-        close(ipfd);
+        fprintf(opf, "\nFailed to set file permissions...");
+        fclose(opf);
         exit(EXIT_FAILURE);
     }
-    //get file size
-    if(fstat(ipfd, &file_stat) != 0)
-    {
-        fprintf(stderr, "\nFailed to access inode...");
-        close(ipfd);
-        exit(EXIT_FAILURE);
-    }
+    return opf;
+}
+
+//============================= Using section of Chaney source code from src/argon2/argon2_example.c ========================================
+static int argon2(FILE *ipf, FILE *opf)
+{
+    char buf[BUF_SIZE] = {'\0'};
+    char *hash = NULL;
+    char *password = NULL;
+    int result = 0;
+    const argon2_type argon2_algo = Argon2_id;
     
-    return ipfd;
+    while(fgets(buf, BUF_SIZE, ipf) != NULL)
+    {
+        password = strtok(buf, ":\n");
+        if(password == NULL)
+        {
+            fprintf(opf, "Invalid input >>%s<<\n", buf);
+            continue;
+        }
+        hash = strtok(NULL, ":\n");
+
+        //test print
+        printf("TESTING: >>%s<< >>%s<<\n", password, hash);
+
+        result = argon2_verify(hash, password, strlen(password), argon2_algo);
+        if(result == ARGON2_OK)
+        {
+            fprintf(opf, "CRACKED: %s %s\n", password, hash);
+            break;
+        }
+        else
+        {
+            fprintf(opf, "FAILED: %s\n", hash);
+        }
+    }
+    return EXIT_SUCCESS;
 }
 
 //================================================ Chaney source code w/modifications =================================================
@@ -334,6 +347,8 @@ static char **create_ragged_array(char *filename, int *line_count)
         fprintf(stderr, "\tfailed to stat input file %s\n", filename);
         exit(EXIT_FAILURE);
     }
+    //set file size
+    fst = file_stat.st_size;
 
     ip_string = calloc(file_stat.st_size + 1, 1);
     bytes_read = read(ipfd, ip_string, file_stat.st_size);
