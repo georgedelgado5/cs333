@@ -5,23 +5,25 @@
 ASSIGNMENT= lab2
 
 #using rchaney directory for argon2.h
+LOCAL_INCLUDES= -I /u/rchaney/argon2/include
+LOCAL_LIBS= -L /u/rchaney/argon2/lib/x86_64-linux-gnu -largon2
 
 CC= gcc
 DEBUG= -g3
-WERROR= -Werror
+WERROR=
+WERROR+= -Werror
 WFLAGS= -Wall $(WERROR) -Wshadow -Wunreachable-code \
 		-Wredundant-decls -Wmissing-declarations \
 		-Wold-style-definition -Wmissing-prototypes \
 		-Wdeclaration-after-statement -Wno-return-local-addr \
-		-Wunsafe-loop-optimizations -Wuninitialized -Werror \
+		-Wunsafe-loop-optimizations -Wuninitialized \
 		-Wno-unused-parameter -Wextra \
 		-Wno-string-compare -Wno-stringop-overflow \
 		-Wno-stringop-overread -Wno-stringop-truncation
 CFLAGS= $(DEBUG) $(WFLAGS)
-#LOCAL_INCLUDES= -I ~rchaney/argon2/include
-LOCAL_LIBS=
-LOCAL_LIBS+= -L ~rchaney/argon2/lib/x86_64-linux-gnu -largon2
+CFLAGS+= $(LOCAL_INCLUDES)
 LDFLAGS=
+LDFLAGS+= $(LOCAL_LIBS)
 PERMS= g+x
 PROG1= prince_of_aragon
 PROG2=
@@ -32,15 +34,17 @@ PROGS= $(PROG1)
 all: $(PROGS)
 
 $(PROG1): $(PROG1).o
-	$(CC) -o $(PROG1) $(PROG1).o $(LOCAL_LIBS)
+	$(CC) -o $(PROG1) $(PROG1).o $(LDFLAGS)
 
 $(PROG1).o: $(PROG1).c
 	$(CC) $(CFLAGS) -c $(PROG1).c
 
-.PHONY: all clean tar val
+.PHONY: all clean tar val time test gdb sym small vim
 
-UNWANTED= *.[SD]err *.[SD]out *.[SD]crack *.[SD]diff *.tot *.thds *.err *.out
-TXT= *.txt
+UNWANTED=
+#UNWANTED+= *.[SD]err *.[SD]out *.[SD]crack *.[SD]diff *.tot *.thds *.err *.out
+#UNWANTED+= $(TXT)
+#TXT= *.txt
 HEADER=
 #HEADER+= *.h
 clean:
@@ -52,7 +56,7 @@ tar: clean
 	tar cvaf $(TAR_FILE) *.[c] [Mm]akefile
 	tar tvaf $(TAR_FILE)
 
-ARGS= -h hashes-10.txt -p passwords-10.txt
+ARGS= -v -h hashes-10.txt -p passwords-10.txt -l log.txt -o output.txt
 val: all
 	valgrind --leak-check=full --show-leak-kinds=all ./$(PROGS) $(ARGS)
 
@@ -64,3 +68,22 @@ test: all
 
 gdb: all
 	gdb -tui ./prince-of-aragon $(ARGS)
+
+#default
+small: clean all sym
+	./$(PROGS) $(ARGS)
+
+#threads
+smallt: clean all sym
+	./$(PROGS) $(ARGS) -t 10
+
+#threads and static
+smalld: clean all sym
+	./$(PROGS) $(ARGS) -t 10 -S
+
+sym:
+	ln -s /u/rchaney/Classes/cs333/Labs/Lab2/hashes-10.txt
+	ln -s /u/rchaney/Classes/cs333/Labs/Lab2/passwords-10.txt
+
+vim:
+	vim $(PROGS).c

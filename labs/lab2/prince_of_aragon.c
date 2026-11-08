@@ -56,15 +56,22 @@ static int hash_lines = 0; //number of lines in hash file
 static int pwd_lines = 0; //number of lines in passwords file
 static char **hash_array = NULL; //hash ragged array
 static char **pwd_array = NULL; //password ragged array
+static int cracked = 0;
+static int failed = 0;
 
 int main(int argc, char *argv[])
 {
-    bool is_verbose = false;
+    struct timespec et0; 
+    struct timespec et1;
     pthread_t *workers = NULL;
-    op_file = stdout; //default
-    log_file = stderr; //default
-    num_threads = DEFAULT_THREADS; //default
-  
+    double et = 0.0;
+    bool is_verbose = false;
+   
+    //set default files
+    num_threads = DEFAULT_THREADS;
+    op_file = stdout;
+    log_file = stderr;
+    
     if(argc < 2)
     {
         fprintf(stderr, "%s [OPTION]... No options provided.\n", argv[0]);
@@ -104,11 +111,13 @@ int main(int argc, char *argv[])
                     log_file = create_file(optarg);
                     break;
                 case THREADS:
-                    int ret = sscanf(optarg, "%d", &num_threads);
-                    if(ret != -1)
                     {
-                        fprintf(stderr, "Invalid value for number of threads...\n");
-                        exit(EXIT_FAILURE);
+                        int ret = sscanf(optarg, "%d", &num_threads);
+                        if(ret != 1)
+                        {
+                            fprintf(stderr, "Invalid value for number of threads...\n");
+                            exit(EXIT_FAILURE);
+                        }
                     }
                     break;
                 case STATIC:
@@ -138,6 +147,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     
+    clock_gettime(CLOCK_MONOTONIC, &et0);
     //allocate memory for threads aka workers
     workers = malloc(num_threads * sizeof(pthread_t));
     {
@@ -166,7 +176,12 @@ int main(int argc, char *argv[])
 
         //threads work completed and joined; free memory allocated for workers (thread array)
         free(workers);
+        
     }
+    clock_gettime(CLOCK_MONOTONIC, &et1);
+    et = elapse_time(&et0, &et1);
+    //fwrite(log_file);
+    fprintf(log_file, "TOTAL: %d total: %d cracked: %d failed: %d et: %.4f\n", num_threads, (cracked+failed), cracked, failed, et);
 
     //close output file
     if(op_file != stdout)
@@ -175,14 +190,6 @@ int main(int argc, char *argv[])
         if(is_verbose)
         {
             printf("\nFiles successfuly closed\n");
-        }
-        else
-        {
-            if(is_verbose)
-            {
-                fprintf(log_file, "\nFailed to close files\n");
-            }
-            exit(EXIT_FAILURE);
         }
     }
 
@@ -193,14 +200,6 @@ int main(int argc, char *argv[])
         if(is_verbose)
         {
             printf("\nFiles successfuly closed\n");
-        }
-        else
-        {
-            if(is_verbose)
-            {
-                fprintf(stderr, "\nFailed to close files\n");
-            }
-            exit(EXIT_FAILURE);
         }
     }
 
@@ -215,29 +214,27 @@ int main(int argc, char *argv[])
 static void *do_work(void *arg)
 {
     long tid = ((long) arg);
-    struct timespec et0;
-    struct timespec et1;
-    double et = 0.0;
-    int total = 0;
-    int cracked = 0;
-    int failed = 0;
     long index = 0;
+    struct timespec t0;
+    struct timespec t1;
+    double et = 0.0;
+    int local_cracked = 0;
+    int local_failed = 0;
     
-    //record elapsed time et0
-    clock_gettime(CLOCK_MONOTONIC, &et0);
+    //record elapsed time t0
+    clock_gettime(CLOCK_MONOTONIC, &t0);
     if(alloc_type == STATIC)
     {
         //index += num_threads is static allocation; we step by the number of threads 
         for(index = tid; index < hash_lines; index += num_threads)
         {
-            total++;
             if(find_match(index))
             {
-                cracked++;
+                local_cracked++;
             }
             else
             {
-                failed++;
+                local_failed++;
             }
         }
     }
@@ -246,26 +243,29 @@ static void *do_work(void *arg)
         index = get_next_index();
         while(index < hash_lines)
         {
-            total++;
             if(find_match(index))
             {
-                cracked++;
+                local_cracked++;
             }
             else
             {
-                failed++;
+                local_failed++;
             }
             index = get_next_index();
         }
     }
-    //record elapse time et1
-    clock_gettime(CLOCK_MONOTONIC, &et1);
+    //record elapse time t1
+    clock_gettime(CLOCK_MONOTONIC, &t1);
     //calculate total elapsed time (et)
-    et = elapse_time(&et0, &et1);
+    et = elapse_time(&t0, &t1);
 
     pthread_mutex_lock(&lock);
-    fprintf(log_file, "\nTHREAD: %ld total: %d cracked: %d failed: %d et: %10.4f\n", tid, total, cracked, failed, et);
+    //fwrite(op_file);
+    fprintf(log_file, "THREAD: %ld total: %d cracked: %d failed: %d et: %.4f\n", tid, (local_cracked + local_failed), local_cracked, local_failed, et);
     pthread_mutex_unlock(&lock);
+
+    cracked += local_cracked;
+    failed += local_failed;
 
     pthread_exit(NULL);
 }
@@ -284,15 +284,14 @@ static bool find_match(long index)
         if(ret == ARGON2_OK)
         {
             pthread_mutex_lock(&lock);
-            fprintf(op_file, "\nCRACKED: %s %s\n", pwd, hash);
+            fprintf(op_file, "CRACKED: %s %s\n", pwd, hash);
             pthread_mutex_unlock(&lock);
             return true;
         }
-
-        pthread_mutex_lock(&lock);
-        fprintf(op_file, "\nFAILED: %s\n", hash);
-        pthread_mutex_unlock(&lock);
     }
+    pthread_mutex_lock(&lock);
+    fprintf(op_file, "FAILED: %s\n", hash);
+    pthread_mutex_unlock(&lock);
     return false;
 }
 
