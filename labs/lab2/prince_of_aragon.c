@@ -5,27 +5,6 @@
 //
 //This program reads in two required input files, hash and plain text. The goal of this program is to identify if a password/key/code exists in the hashed and plain text file
 //
-//=========================== Citations and Resources ============================
-//Resources and source code referenced include /u/rchaney/Classes/cs333/src/[argon2 | ray-file | threads]
-//
-//  My initial go of creating the ragged array was to open the file and iterate through each line with `getline(...)` count the number of lines. The count would indicate the number indices for the char ** array. Nothing new; I'm not reinventing the wheel;
-//
-//  Long story short, I end up doing my work later in the day and in a crunch that I don't feel like I'm "logicing" very well (personal problem). I want to be clear that I'm spending the time to think through the assignment albeit, a limited amount of time. Will probably bite me in the end (final exam...)
-//
-//  Therefore, I'm using chaney's src files as a direct resource. I'm including this because I want to be clear that I'm NOT presenting his work as my own!! Although I'm getting to the same logical conclusion (at a much slower rate...) that Chaney's code presents, I did NOT write it myself. I'm guessing that "src" code is available to use as a utility...
-//      - The majority of "src" code that I'm utilizing is from ray-file to create the ragged array. 
-//
-//Additional Resources include:
-//  - cs205 lecture slides that I saved -> reviewing ragged arrays
-//  - Google searches include AI generated answers, stack overflow, and reddit...
-//      - I'm sad to say that most of my google searches were for "dumb" searches such as data type byte size and basic examples of library calls
-//      - As much as I like reading man pages (I've actually learned to appreciate them), I sometimes need help with example code (more on the syntax side)
-//          - Like who thought it was a good idea to create size_t AND ssize_t -> me no read good; me read one or two 's'? Too many double takes >!00!<
-//              - Honestly, sometimes I'm just bad at logic. I guess it doesn't help to be doing this at 1am with only 5 hours of sleep...
-//          - One example that was helpful was the man pages for getline(3)
-//          - More often man pages doesn't have "good" examples... I need to get "gooder"... story of my life
-//=========================== Citations and Resources ============================
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -35,8 +14,8 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <pthread.h>
-//#include <argon2.h>
 #include "argon2.h"
+#include <time.h>
 
 //getopt options
 #define HASHES 'h'
@@ -47,21 +26,19 @@
 #define STATIC 'S'
 #define VERBOSE 'v'
 #define HELP 'H'
-#define OPTIONS "h:p:olt::SvH"
+#define OPTIONS "h:p:o:l:t:SvH"
 
 // macros
 #define DYNAMIC 'D'
 #define DEFAULT_THREADS 1
-#define BUF_SIZE 1000
+#define NS_PER_SECOND 1000000000.0
 
-//thread utilities
-static int num_threads = DEFAULT_THREADS;
-//static long index = 0;
-//static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-
-void help(char *);
+static void *do_work(void *); //thread entry point -> like static void *find_primes(long) in tprimes 
+static bool find_match(long); //called by thread entry
+static long get_next_index(void); //like get next candidate from tprimes
+static double elapse_time(struct timespec *, struct timespec *); //copied from tprimes -> calculates elapsed time
 static FILE *create_file(char *);
-static int argon2(FILE *, FILE *);
+static void help(char *);
 
 //======================= Chaney source code w/mods ===========================
 static char **create_line_array(char *, int);
@@ -69,147 +46,132 @@ static int count_lines(char *);
 static char **create_ragged_array(char *, int *);
 //======================= Chaney source code w/mods ===========================
     
-//open flags
-//static int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
-//file permissions
 static mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-static ssize_t fst = 0;
+static int num_threads = 0; //number of threads -> defaults to '1' thread if no argument is passed
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static char alloc_type = DYNAMIC;
+static FILE *op_file = NULL; //output file 
+static FILE *log_file = NULL; //log file
+static int hash_lines = 0; //number of lines in hash file
+static int pwd_lines = 0; //number of lines in passwords file
+static char **hash_array = NULL; //hash ragged array
+static char **pwd_array = NULL; //password ragged array
 
 int main(int argc, char *argv[])
 {
-    //get file size
-    ssize_t hfst;
-    ssize_t pfst;
-    
     bool is_verbose = false;
-    int opt = 0;
-    char alloc_type = DYNAMIC;
-    
-    //file descriptors
-    //int opfd = STDOUT_FILENO; //default is stdout
-
-    FILE *opf = NULL;
-    FILE *logf = NULL;
-
-    //ragged arrays
-    char **harray = NULL; //hash ragged array
-    char **parray = NULL; //plain text ragged array
- 
+    pthread_t *workers = NULL;
+    op_file = stdout; //default
+    log_file = stderr; //default
+    num_threads = DEFAULT_THREADS; //default
+  
     if(argc < 2)
     {
-        fprintf(stderr, "No options provided...\n");
-        help(argv[0]);
-        exit(EXIT_FAILURE);
-    }
-    if(argc < 3 && strcmp(argv[1], "-v") == 0)
-    {
-        fprintf(stderr, "File option must be provided...\n");
+        fprintf(stderr, "%s [OPTION]... No options provided.\n", argv[0]);
         help(argv[0]);
         exit(EXIT_FAILURE);
     }
 
     //getopt
-    while((opt = getopt(argc, argv, OPTIONS)) != -1)
     {
-        int num_lines = 0;
-        switch(opt)
+        int opt = 0;
+        while((opt = getopt(argc, argv, OPTIONS)) != -1)
         {
-            case HASHES:
-                harray = create_ragged_array(optarg, &num_lines);
-                hfst = fst; 
-                break;
-            case PLAIN:
-                parray = create_ragged_array(optarg, &num_lines);
-                pfst = fst;
-                break;
-            case OUTPUT:
-                if(optarg)
-                {
+            switch(opt)
+            {
+                case HASHES:
+                    hash_array = create_ragged_array(optarg, &hash_lines);
+                    if(!hash_array)
+                    {
+                        fprintf(stderr, "\nFailed to create file...\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    break;
+                case PLAIN:
+                    pwd_array = create_ragged_array(optarg, &pwd_lines);
+                    if(!pwd_array)
+                    {
+                        fprintf(stderr, "\nFailed to create file...\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    break;
+                case OUTPUT:
                     //file created - no memory allocated
-                    opf = create_file(optarg);
-                }
-                else
-                {
-                    opf = stdout;
-                }
-                break;
-            case LOGFILE:
-                if(optarg)
-                {
+                    op_file = create_file(optarg);
+                    break;
+                case LOGFILE:
                     //file created - no memory allocated
-                    logf = create_file(optarg);
-                }
-                else
-                {
-                    logf = stderr;
-                }
-                break;
-            case THREADS:
-                if(optarg)
-                {
-                    num_threads = atoi(optarg);
-                }
-                break;
-            case STATIC:
-                alloc_type = STATIC;
-                break;
-            case VERBOSE:
-                is_verbose = true;
-                break;
-            case HELP:
-                help(argv[0]);
-                exit(EXIT_SUCCESS);
-                break;
-            default:
-                help(argv[0]);
-                break;
+                    log_file = create_file(optarg);
+                    break;
+                case THREADS:
+                    int ret = sscanf(optarg, "%d", &num_threads);
+                    if(ret != -1)
+                    {
+                        fprintf(stderr, "Invalid value for number of threads...\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    break;
+                case STATIC:
+                    alloc_type = STATIC;
+                    break;
+                case VERBOSE:
+                    is_verbose = true;
+                    if(argc < 3)
+                    {
+                        fprintf(stderr, "%s [-v] [OPTION] [...] must be provided...\n", argv[0]);
+                        help(argv[0]);
+                        exit(EXIT_FAILURE);
+                    }
+                    break;
+                case HELP:
+                default:
+                    help(argv[0]);
+                    exit(EXIT_SUCCESS);
+                    break;
+            }
         }
     }
-
+    
     if(num_threads < 0)
     {
-        fprintf(logf, "Invalid value for number of threads %d\n", num_threads);
-        fclose(logf);
+        fprintf(stderr, "\n%s [-t] [THREADS] requires a valid THREAD number...\n", argv[0]);
         exit(EXIT_FAILURE);
     }
-
-    //allocate memory for both output file and log file if they exist
+    
+    //allocate memory for threads aka workers
+    workers = malloc(num_threads * sizeof(pthread_t));
     {
-        ssize_t size = 0;
-        if(hfst > pfst)
+        //create threads -> "tid" = "thread index"
+        for(long tid = 0; tid < num_threads; ++tid)
         {
-            size = hfst;
+            int ret = pthread_create(
+                    &(workers[tid]) //thread(s)
+                    , NULL
+                    , do_work //method name
+                    , (void *) tid //argument passed to method -> thread index
+                    );
+            if(ret != 0)
+            {
+                perror("Thread creation failed");
+                fprintf(stderr, "\nThread creation failed on %ld\n", tid);
+                exit(EXIT_FAILURE);
+            }
         }
-        size = pfst;
+        
+        //join threads
+        for(int tid = 0; tid < num_threads; ++tid)
+        {
+            pthread_join(workers[tid], NULL);
+        }
 
-        //allocate memory for both output file and log file
-        if(opf != stdout)
-        {
-            opf = malloc(size + 1);
-        }
-        if(logf != stderr)
-        {
-            logf = malloc(size + 1);
-        }
-    }
-
-    //run static or dynamic threading
-    {
-        if(alloc_type == STATIC)
-        {
-            //do static allocation threading here
-            argon2(opf, logf);
-        }
-        else
-        {
-            //do dynamic allocation threading here
-            argon2(opf, logf);
-        }
+        //threads work completed and joined; free memory allocated for workers (thread array)
+        free(workers);
     }
 
     //close output file
-    if(fclose(opf) == 0)
+    if(op_file != stdout)
     {
+        fclose(op_file);
         if(is_verbose)
         {
             printf("\nFiles successfuly closed\n");
@@ -218,15 +180,16 @@ int main(int argc, char *argv[])
         {
             if(is_verbose)
             {
-                fprintf(logf, "\nFailed to close files\n");
+                fprintf(log_file, "\nFailed to close files\n");
             }
             exit(EXIT_FAILURE);
         }
     }
 
     //close log file
-    if(fclose(logf) == 0)
+    if(log_file != stderr)
     {
+        fclose(log_file);
         if(is_verbose)
         {
             printf("\nFiles successfuly closed\n");
@@ -240,90 +203,159 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
     }
+
+    free(hash_array[0]);
+    free(hash_array);
+    free(pwd_array[0]);
+    free(pwd_array);
+
+    pthread_exit(NULL);
+}
+
+static void *do_work(void *arg)
+{
+    long tid = ((long) arg);
+    struct timespec et0;
+    struct timespec et1;
+    double et = 0.0;
+    int total = 0;
+    int cracked = 0;
+    int failed = 0;
+    long index = 0;
     
+    //record elapsed time et0
+    clock_gettime(CLOCK_MONOTONIC, &et0);
+    if(alloc_type == STATIC)
+    {
+        //index += num_threads is static allocation; we step by the number of threads 
+        for(index = tid; index < hash_lines; index += num_threads)
+        {
+            total++;
+            if(find_match(index))
+            {
+                cracked++;
+            }
+            else
+            {
+                failed++;
+            }
+        }
+    }
+    else
+    {
+        index = get_next_index();
+        while(index < hash_lines)
+        {
+            total++;
+            if(find_match(index))
+            {
+                cracked++;
+            }
+            else
+            {
+                failed++;
+            }
+            index = get_next_index();
+        }
+    }
+    //record elapse time et1
+    clock_gettime(CLOCK_MONOTONIC, &et1);
+    //calculate total elapsed time (et)
+    et = elapse_time(&et0, &et1);
 
-    free(harray);
-    free(parray);
+    pthread_mutex_lock(&lock);
+    fprintf(log_file, "\nTHREAD: %ld total: %d cracked: %d failed: %d et: %10.4f\n", tid, total, cracked, failed, et);
+    pthread_mutex_unlock(&lock);
 
-    return(EXIT_SUCCESS);
+    pthread_exit(NULL);
+}
+
+static bool find_match(long index)
+{
+    int ret = 0;
+    char *hash = hash_array[index];
+    char *pwd = NULL;
+    const argon2_type argon2_algo = Argon2_id; // const <datatype> <variable-name> = <argon2-defined-macro>;
+    
+    for(long line_index = 0; line_index < pwd_lines; line_index++)
+    {
+        pwd = pwd_array[line_index];
+        ret = argon2_verify(hash, pwd, strlen(pwd), argon2_algo);
+        if(ret == ARGON2_OK)
+        {
+            pthread_mutex_lock(&lock);
+            fprintf(op_file, "\nCRACKED: %s %s\n", pwd, hash);
+            pthread_mutex_unlock(&lock);
+            return true;
+        }
+
+        pthread_mutex_lock(&lock);
+        fprintf(op_file, "\nFAILED: %s\n", hash);
+        pthread_mutex_unlock(&lock);
+    }
+    return false;
+}
+
+static long get_next_index(void)
+{
+    static long next_index = 0;
+    long index = 0;
+
+    pthread_mutex_lock(&lock);
+    index = next_index;
+    next_index++;
+    pthread_mutex_unlock(&lock);
+
+    return index;
+}
+
+//self explanatory
+static double elapse_time(struct timespec *t0, struct timespec *t1)
+{
+    double et = (t1->tv_sec - t0->tv_sec)
+        + ((t1->tv_nsec - t0->tv_nsec) / NS_PER_SECOND);
+    return et;
+}
+
+//taking inspiration from Chaney create_ragged_array
+//creates file for log or output if argument option is given
+//no memory allocated
+static FILE *create_file(char *filename)
+{
+    FILE *file = NULL;
+    file = fopen(filename, "w"); //"w" has (O_WRONLY | O_CREAT | O_TRUNC) flags
+    if(!file)
+    {
+        fprintf(stderr, "\nFailed to open %s\n", filename);
+        exit(EXIT_FAILURE);
+    }
+    //change file permissions
+    if(chmod(filename, file_perms) == -1)
+    {
+        fprintf(stderr, "\nFailed to set file permissions...");
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
+    return file;
 }
 
 //print help message
 //argument is program name -> argv[0]
-void help(char *prog_name)
+static void help(char *prog_name)
 {
-    printf("Description:");
-    printf("\nAdd description.\n");
+    printf("\nDescription:");
+    printf("\nMulti-threaded argon2 hash checker.\n");
     printf("\nUsage:\n");
-    printf("\t%s [OPTION]\n", prog_name);
+    printf("\t%s [OPTION] [...]\n", prog_name);
     printf("Options:\n");
-    printf("\t[-h] (Required) name of the input file of argon2 hashes.\n");
-    printf("\t[-p] (Required) name of the input file of plaintext passwords.\n");
-    printf("\t[-o] Specify the name of the output file. Defaults to stdout.\n");
-    printf("\t[-l] Specify the name of the log file. Defaults to stderr.\n");
-    printf("\t[-t] Specify the number of threads to use. Defaults to '1' thread.\n");
+    printf("\t[-h] [FILENAME..] name of the input file of argon2 hashes.\n");
+    printf("\t[-p] [FILENAME..] name of the input file of plaintext passwords.\n");
+    printf("\t[-o] [FILENAME..] name of the output file. Defaults to stdout.\n");
+    printf("\t[-l] [FILENAME..] the name of the log file. Defaults to stderr.\n");
+    printf("\t[-t] [THREADS...] number of threads to use. Defaults to '1' thread.\n");
     printf("\t[-S] Run with static work allocation. Defaults to dynamic work allocation.\n");
     printf("\t[-v] Describe process being performed.\n");
     printf("\t[-H] Print help information.\n");
-}
-
-// taking inspiration from Chaney create_ragged_array
-static FILE *create_file(char *filename)
-{
-    char *ip_string = NULL;
-    FILE *opf = NULL;
-    
-    ip_string = filename;
-    opf = fopen(ip_string, "w");
-    if(!opf)
-    {
-        fprintf(stderr, "\nFailed to open %s\n", ip_string);
-        exit(EXIT_FAILURE);
-    }
-    //change file permissions
-    if(chmod(ip_string, file_perms) == -1)
-    {
-        fprintf(opf, "\nFailed to set file permissions...");
-        fclose(opf);
-        exit(EXIT_FAILURE);
-    }
-    return opf;
-}
-
-//============================= Using section of Chaney source code from src/argon2/argon2_example.c ========================================
-static int argon2(FILE *ipf, FILE *opf)
-{
-    char buf[BUF_SIZE] = {'\0'};
-    char *hash = NULL;
-    char *password = NULL;
-    int result = 0;
-    const argon2_type argon2_algo = Argon2_id;
-    
-    while(fgets(buf, BUF_SIZE, ipf) != NULL)
-    {
-        password = strtok(buf, ":\n");
-        if(password == NULL)
-        {
-            fprintf(opf, "Invalid input >>%s<<\n", buf);
-            continue;
-        }
-        hash = strtok(NULL, ":\n");
-
-        //test print
-        printf("TESTING: >>%s<< >>%s<<\n", password, hash);
-
-        result = argon2_verify(hash, password, strlen(password), argon2_algo);
-        if(result == ARGON2_OK)
-        {
-            fprintf(opf, "CRACKED: %s %s\n", password, hash);
-            break;
-        }
-        else
-        {
-            fprintf(opf, "FAILED: %s\n", hash);
-        }
-    }
-    return EXIT_SUCCESS;
 }
 
 //================================================ Chaney source code w/modifications =================================================
@@ -347,9 +379,7 @@ static char **create_ragged_array(char *filename, int *line_count)
         fprintf(stderr, "\tfailed to stat input file %s\n", filename);
         exit(EXIT_FAILURE);
     }
-    //set file size
-    fst = file_stat.st_size;
-
+    
     ip_string = calloc(file_stat.st_size + 1, 1);
     bytes_read = read(ipfd, ip_string, file_stat.st_size);
     if (bytes_read != file_stat.st_size) {
@@ -389,7 +419,6 @@ static char **create_line_array(char *string, int wc)
     char **wa = malloc(wc * sizeof(char *));
     char *line = NULL;
     int index = 0;
-
 	// strtok is not thread-safe
     line = strtok(string, "\n");
     while(line) {
@@ -397,6 +426,5 @@ static char **create_line_array(char *string, int wc)
 		index++;
         line = strtok(NULL, "\n");
     }
-
     return wa;
 }
