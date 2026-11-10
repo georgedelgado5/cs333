@@ -33,8 +33,8 @@
 #define DEFAULT_THREADS 1
 #define NS_PER_SECOND 1000000000.0
 
-static void *do_work(void *); //thread entry point -> like static void *find_primes(long) in tprimes 
-static bool find_match(long); //called by thread entry
+static void *find_match(void *); //thread entry point -> like static void *find_primes(long) in tprimes 
+static bool is_match(long); //called by thread entry
 static long get_next_index(void); //like get next candidate from tprimes
 static double elapse_time(struct timespec *, struct timespec *); //copied from tprimes -> calculates elapsed time
 static FILE *create_file(char *);
@@ -157,7 +157,7 @@ int main(int argc, char *argv[])
             int ret = pthread_create(
                     &(workers[tid]) //thread(s)
                     , NULL
-                    , do_work //method name
+                    , find_match //method name
                     , (void *) tid //argument passed to method -> thread index
                     );
             if(ret != 0)
@@ -211,7 +211,7 @@ int main(int argc, char *argv[])
     pthread_exit(NULL);
 }
 
-static void *do_work(void *arg)
+static void *find_match(void *arg)
 {
     long tid = ((long) arg);
     long index = 0;
@@ -228,7 +228,7 @@ static void *do_work(void *arg)
         //index += num_threads is static allocation; we step by the number of threads 
         for(index = tid; index < hash_lines; index += num_threads)
         {
-            if(find_match(index))
+            if(is_match(index))
             {
                 local_cracked++;
             }
@@ -243,7 +243,7 @@ static void *do_work(void *arg)
         index = get_next_index();
         while(index < hash_lines)
         {
-            if(find_match(index))
+            if(is_match(index))
             {
                 local_cracked++;
             }
@@ -260,7 +260,6 @@ static void *do_work(void *arg)
     et = elapse_time(&t0, &t1);
 
     pthread_mutex_lock(&lock);
-    //fwrite(op_file);
     fprintf(log_file, "THREAD: %ld total: %d cracked: %d failed: %d et: %.4f\n", tid, (local_cracked + local_failed), local_cracked, local_failed, et);
     pthread_mutex_unlock(&lock);
 
@@ -270,7 +269,7 @@ static void *do_work(void *arg)
     pthread_exit(NULL);
 }
 
-static bool find_match(long index)
+static bool is_match(long index)
 {
     int ret = 0;
     char *hash = hash_array[index];
