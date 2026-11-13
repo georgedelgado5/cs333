@@ -4,10 +4,13 @@
 
 ASSIGNMENT= lab3
 
+#using rchaney directory for argon2.h
+LOCAL_INCLUDES= -I /u/rchaney/Classes/cs333/Labs/Lab3/
+
 CC= gcc
 DEBUG= -g3
 WERROR=
-WERROR+= -Werror
+#WERROR+= -Werror
 WFLAGS= -Wall -Wextra -Wshadow -Wunreachable-code -Wredundant-decls \
 		-Wmissing-declarations -Wold-style-definition \
 		-Wmissing-prototypes -Wdeclaration-after-statement \
@@ -15,7 +18,9 @@ WFLAGS= -Wall -Wextra -Wshadow -Wunreachable-code -Wredundant-decls \
 		-Wuninitialized $(WERROR)
 
 CFLAGS= $(DEBUG) $(WFLAGS)
+CFLAGS+= $(LOCAL_INCLUDES)
 LDFLAGS=
+#LDFLAGS+=
 PERMS= g+x
 PROG1= folio
 PROG2=
