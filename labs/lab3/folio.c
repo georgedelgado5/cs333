@@ -34,9 +34,7 @@ void help(char *);
 
 //static variables used across multiple methods
 static char *folio_file = NULL;
-static int ipf = -1;
-static int opf = -1;
-static int folio_fd = -1;
+static int folio_fd = -1; // used to read/write depending on extract/create
 static bool is_verbose, to_validate, to_list, to_extract, to_create = false;
 
 int main(int argc, char *argv[])
@@ -94,6 +92,29 @@ int main(int argc, char *argv[])
         }
     }
     
+    //process remaining command line arguments
+    {
+        if(optind < argc)
+        {
+            if(is_verbose)
+            {
+                fprintf(stdout, "\nThe following members will be used:\n");
+            }
+            //process remaining command line arguments...
+            for(int i = optind; i < argc; ++i)
+            {
+                //what does processing the remaining arguments mean?
+                //Do I need to add them to the folio_header_t member name
+                if(is_verbose)
+                {
+                    printf("\t%s\n", argv[i]);
+                }
+            }
+        }
+    }
+
+    //if folio file name passed, we can folio/pipe. Otherwise, use open(), read(), write()
+
     { 
         //open flags
         int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
@@ -104,19 +125,19 @@ int main(int argc, char *argv[])
         {
             if(to_extract)
             {
-                ipf = STDIN_FILENO;
+                folio_fd = STDIN_FILENO;
             }
             else 
             {
-                opf = STDOUT_FILENO;
+                folio_fd = STDOUT_FILENO;
             }
         }
         else
         {
             if(to_extract)
             {
-                opf = open(folio_file, open_flags, file_perms);
-                if(opf == -1)
+                folio_fd = open(folio_file, open_flags, file_perms);
+                if(folio_fd == -1)
                 {
                     perror("\nFailed to open file");
                     fprintf(stderr, "Failed to open...\n");
@@ -125,8 +146,8 @@ int main(int argc, char *argv[])
             }
             else
             {
-                ipf = open(folio_file, open_flags, file_perms);
-                if(ipf == -1)
+                folio_fd = open(folio_file, open_flags, file_perms);
+                if(folio_fd == -1)
                 {
                     perror("\nFailed to open file");
                     fprintf(stderr, "Failed to open...\n");
