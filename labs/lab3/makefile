@@ -6,6 +6,7 @@ ASSIGNMENT= lab3
 
 #using rchaney directory for argon2.h
 LOCAL_INCLUDES= -I /u/rchaney/Classes/cs333/Labs/Lab3/
+HEADER= /u/rchaney/Classes/cs333/Labs/Lab3/folio.h
 
 CC= gcc
 DEBUG= -g3
@@ -33,13 +34,13 @@ all: $(PROGS)
 $(PROG1): $(PROG1).o
 	$(CC) -o $(PROG1) $(PROG1).o $(LDFLAGS)
 
-$(PROG1).o: $(PROG1).c
+$(PROG1).o: $(PROG1).c $(HEADER)
 	$(CC) $(CFLAGS) -c $(PROG1).c -lmd
 
 .PHONY: all clean tar test gdb val
 
-FILE_TYPE=
-FILE_TYPE+= *.o *.~ *.h
+FILE_TYPE= *.o *.~
+#FILE_TYPE+= *.h
 clean:
 	rm -f $(PROGS) $(FILE_TYPE) \#*
 

@@ -14,38 +14,30 @@
 //md5 -> see man 3bsd md5
 #include <sys/types.h>
 #include <md5.h>
+//file descriptors STDOUT, STDIN, ...
+#include <unistd.h>
+//include Chaney's folio.h -> makefile using gcc -I option to include entire directory
+#include "folio.h"
 
 //getopt options
-#define EXTRACT 'x'
 #define CREATE 'c'
+#define EXTRACT 'x'
 #define S_TABLE 't'
 #define L_TABLE 'T'
-#define FILENAME 'f'
 #define VALIDATE 'V'
+#define FILENAME 'f'
 #define VERBOSE 'v'
 #define HELP 'h'
-#define OPTIONS "xctTf:hvV"
-
-//set default values -> use static if neccessary
 
 //helper methods
 void help(char *);
-static void handle_file(char *);
-static void create(void);
-static void extract(void);
-static void validate(void);
-static void list_table(void);
 
 //static variables used across multiple methods
 static char *folio_file = NULL;
-static int ip_file = -1;
-static int op_file = -1;
-//can I make one char array?
-static char *members_c[] = {NULL}; //members to create
-static char *members_x[] = {NULL}; //members to extract
-static bool is_verbose = false;
-static bool to_validate = false;
-static bool to_list = false;
+static int ipf = -1;
+static int opf = -1;
+static int folio_fd = -1;
+static bool is_verbose, to_validate, to_list, to_extract, to_create = false;
 
 int main(int argc, char *argv[])
 {
@@ -57,11 +49,11 @@ int main(int argc, char *argv[])
             {
                 case EXTRACT:
                     //if no [-f] [filename] option used, default to reading from stdin
-                    //get members_x
+                    to_extract = true;
                     break;
                 case CREATE:
                     //if no [-f] [filename] option used, default to writing to stdout
-                    //get members_c
+                    to_create = true;
                     break;
                 case S_TABLE:
                     to_list = true;
@@ -78,25 +70,73 @@ int main(int argc, char *argv[])
                 case HELP:
                 default:
                     help(argv[0]);
-                    exit(EXIT_SUCCESS);
+                    perror("\nInvalid command line option");
+                    fprintf(stderr, "Invalid command line option...\n");
+                    exit(INVALID_CMD_OPTION);
                     break;
             }
         }
     }
 
-    if(!folio_file)
-    {
-        //do I have to pipe ip_file to op_file if both [-c] and [-x] are used with no [-f]
-        //if(!members_c[0]) //create
-        //{
-        //  op_file = STDOUT_FILENO;
-        //}
-        //if(!members_x[0]) //extract
-        //{
-        //  ip_file = STDIN_FILENO;
-        //}
+    //check that multiple options weren't passed
+    {    
+        if(!to_extract && !to_create)
+        {
+            perror("\nOne option required: [-x] or [-c]");
+            fprintf(stderr, "One option required: [-x] or [-c]...\n");
+            exit(INVALID_CMD_OPTION);
+        }
+        if(to_extract && to_create)
+        {
+            perror("\nMultiple options provided: [-x] and [-c]");
+            fprintf(stderr, "Multiple options provided: [-x] and [-c]...\n");
+            exit(INVALID_CMD_OPTION);
+        }
     }
     
+    { 
+        //open flags
+        int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
+        //file permissions: -rw-rw-r--
+        mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
+
+        if(!folio_file)
+        {
+            if(to_extract)
+            {
+                ipf = STDIN_FILENO;
+            }
+            else 
+            {
+                opf = STDOUT_FILENO;
+            }
+        }
+        else
+        {
+            if(to_extract)
+            {
+                opf = open(folio_file, open_flags, file_perms);
+                if(opf == -1)
+                {
+                    perror("\nFailed to open file");
+                    fprintf(stderr, "Failed to open...\n");
+                    exit(CANNOT_OPEN_MEMB);
+                }
+            }
+            else
+            {
+                ipf = open(folio_file, open_flags, file_perms);
+                if(ipf == -1)
+                {
+                    perror("\nFailed to open file");
+                    fprintf(stderr, "Failed to open...\n");
+                    exit(CANNOT_OPEN_FOLIO);
+                }
+            }
+        }
+    }
+
+
     if(is_verbose)
     {
         fprintf(stdout, "\nProviding additional information...\n");
@@ -118,46 +158,6 @@ int main(int argc, char *argv[])
  * fork(),
  * exec() family of functions
 */
-
-static void handle_file(char *filename)
-{
-    //should I pipe?
-    ip_file = open(filename, O_RDONLY);
-    if(ip_file == -1)
-    {
-        perror("Failed to open file");
-        fprintf(stderr, "\nFailed to open %s...\n", filename);
-        exit(EXIT_FAILURE);
-    }
-
-}
-
-static void create(void)
-{
-
-}
-
-static void extract(void)
-{
-
-}
-
-static void validate(void)
-{
-
-}
-
-static void list_table(void)
-{
-    /*
-    if(is_verbose && to_list)
-    {
-        //print long table
-        return;
-    }
-    //print short table
-    */
-}
 
 //print help message
 void help(char *prog_name)
