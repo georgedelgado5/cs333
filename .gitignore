@@ -4,17 +4,6 @@
 *~
 .directory
 
-#relative directories
-#lab0
-/labs/lab0
-#lab1
-#lab2
-/labs/lab2/prince_of_aragon.h
-#lab3
-/labs/lab3/*.md
-/labs/lab3/*.bash
-/labs/lab3/md5_file.c
-
 #hidden files
 .*
 
@@ -45,3 +34,14 @@
 *.out
 *.exe
 
+#relative directories
+#lab0
+/labs/lab0
+#lab1
+#lab2
+/labs/lab2/prince_of_aragon.h
+#lab3
+/labs/lab3/*.md
+/labs/lab3/*.bash
+/labs/lab3/md5_file.c
+/labs/lab3/folio
