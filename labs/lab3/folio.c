@@ -33,9 +33,10 @@
 void help(char *);
 
 //static variables used across multiple methods
-static char *folio_file = NULL;
+static char *archive_file = NULL;
 static int folio_fd = -1; // used to read/write depending on extract/create
 static bool is_verbose, to_validate, to_list, to_extract, to_create = false;
+static struct stat folio_file;
 
 int main(int argc, char *argv[])
 {
@@ -57,7 +58,7 @@ int main(int argc, char *argv[])
                     to_list = true;
                     break;
                 case FILENAME:
-                    folio_file = optarg;
+                    archive_file = optarg;
                     break;
                 case VALIDATE:
                     to_validate = true;
@@ -66,6 +67,8 @@ int main(int argc, char *argv[])
                     is_verbose = true;
                     break;
                 case HELP:
+                    help(argv[0]);
+                    exit(NO_ACTION);
                 default:
                     help(argv[0]);
                     perror("\nInvalid command line option");
@@ -114,29 +117,31 @@ int main(int argc, char *argv[])
     }
 
     //if folio file name passed, we can folio/pipe. Otherwise, use open(), read(), write()
-
     { 
         //open flags
         int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
         //file permissions: -rw-rw-r--
         mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
 
-        if(!folio_file)
+        if(!archive_file)
         {
             if(to_extract)
             {
                 folio_fd = STDIN_FILENO;
+                //add stream reading here
             }
             else 
             {
                 folio_fd = STDOUT_FILENO;
+                //add stream writing here
             }
         }
         else
         {
+            //do not create file; only read
             if(to_extract)
             {
-                folio_fd = open(folio_file, open_flags, file_perms);
+                folio_fd = open(archive_file, O_RDONLY);
                 if(folio_fd == -1)
                 {
                     perror("\nFailed to open file");
@@ -146,7 +151,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                folio_fd = open(folio_file, open_flags, file_perms);
+                folio_fd = open(archive_file, open_flags, file_perms);
                 if(folio_fd == -1)
                 {
                     perror("\nFailed to open file");
@@ -155,7 +160,27 @@ int main(int argc, char *argv[])
                 }
             }
         }
+        //change file permissions
+        if(fchmod(folio_fd, file_perms) == -1)
+        {
+            perror("\nFailed to set file permissions");
+            fprintf(stderr, "\nFailed to set file permissions...");
+            close(folio_fd);
+            exit(CANNOT_OPEN_FOLIO);
+        }
+        //get stat info
+        if(fstat(folio_fd, &folio_file) == -1)
+        {
+            perror("\nFailed to stat file");
+            fprintf(stderr, "\nFailed to stat file...");
+            close(folio_fd);
+            exit(CANNOT_STAT_FILE);
+        }
     }
+
+    //validate magic number header first thing
+
+    //fork and pipe here?
 
 
     if(is_verbose)
@@ -186,13 +211,11 @@ void help(char *prog_name)
     printf("\nDescription:");
     printf("\nAdd description.\n");
     printf("\nUsage:\n");
-    printf("\t%s <OPTION> [...]\n", prog_name);
-    printf("\t%s [-x] [member-1, ...]\n", prog_name);
-    printf("\t%s [-c] [filename, ...]\n", prog_name);
+    printf("\t%s <OPTIONS> [-f FILENAME] [members [...]]\n", prog_name);
     printf("Options:\n");
-    printf("\t[-x] [...] Members extracted from folio file.\n");
-    printf("\t[-c] [...] Create a folio style archive file. Names of files to go into archive need to be provided.\n");
-    printf("\t[-f] [...] Specify the name of the folio file on which to operate.\n");
+    printf("\t[-x] Members extracted from folio file.\n");
+    printf("\t[-c] Create a folio style archive file. Names of files to go into archive need to be provided.\n");
+    printf("\t[-f] [FILENAME] Specify the name of the folio file on which to operate.\n");
     printf("\t[-V] Validate the MD5 value for the header and data for each archive member.\n");
     printf("\t[-t] List table of contents. Add '-v' for additional info.\n");
     printf("\t[-v] Provide additional information.\n");
