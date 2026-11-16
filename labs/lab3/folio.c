@@ -99,6 +99,11 @@ int main(int argc, char *argv[])
     {
         if(optind < argc)
         {
+            //IMPORTANT:
+            // - if extracting, no command line arguments should be given
+            //  - if verbose flag used, print members extracted
+            // - if creating, process command line arguments
+            //  - if verbose flags used, print members to add
             if(is_verbose)
             {
                 fprintf(stdout, "\nThe following members will be used:\n");
@@ -158,23 +163,24 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "Failed to open...\n");
                     exit(CANNOT_OPEN_FOLIO);
                 }
+                //only if creating file
+                //change file permissions
+                if(fchmod(folio_fd, file_perms) == -1)
+                {
+                    perror("\nFailed to set file permissions");
+                    fprintf(stderr, "\nFailed to set file permissions...");
+                    close(folio_fd);
+                    exit(CANNOT_OPEN_FOLIO);
+                }
+                //get stat info
+                if(fstat(folio_fd, &folio_file) == -1)
+                {
+                    perror("\nFailed to stat file");
+                    fprintf(stderr, "\nFailed to stat file...");
+                    close(folio_fd);
+                    exit(CANNOT_STAT_FILE);
+                }
             }
-        }
-        //change file permissions
-        if(fchmod(folio_fd, file_perms) == -1)
-        {
-            perror("\nFailed to set file permissions");
-            fprintf(stderr, "\nFailed to set file permissions...");
-            close(folio_fd);
-            exit(CANNOT_OPEN_FOLIO);
-        }
-        //get stat info
-        if(fstat(folio_fd, &folio_file) == -1)
-        {
-            perror("\nFailed to stat file");
-            fprintf(stderr, "\nFailed to stat file...");
-            close(folio_fd);
-            exit(CANNOT_STAT_FILE);
         }
     }
 
