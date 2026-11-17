@@ -44,7 +44,6 @@ static int folio_fd = -1; // used to read/write depending on extract/create
 static bool is_verbose, magic_mike = false;
 static struct stat folio_file;
 static folio_action_t action = ACTION_NONE;
-static struct stat member_stat;
 
 int main(int argc, char *argv[])
 {
@@ -137,6 +136,8 @@ int main(int argc, char *argv[])
 //command line stuff
 void members(int argc, char *argv[])
 {
+    struct stat member_stat;
+    //folio_footer_t footer;
     //process remaining command line arguments
     if(optind < argc)
     {
@@ -146,6 +147,15 @@ void members(int argc, char *argv[])
         }
         for(int i = optind; i < argc; ++i)
         {
+            //fstat members
+            if(fstat(folio_fd, &member_stat) == -1)
+            {
+                perror("\nFailed to fstat file");
+                fprintf(stderr, "\nFailed to fstat file...");
+                close(folio_fd);
+                exit(CANNOT_STAT_FILE);
+            }
+            //write members to stdout or file
             if(is_verbose)
             {
                 printf("\t%s\n", argv[i]);
