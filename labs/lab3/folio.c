@@ -30,13 +30,21 @@
 #define HELP 'h'
 
 //helper methods
+void members(int, char *[]);
+void create(void);
+void extract(void);
+void validate(void);
+void list_short(void);
+void list_long(void);
 void help(char *);
 
 //static variables used across multiple methods
 static char *archive_file = NULL;
 static int folio_fd = -1; // used to read/write depending on extract/create
-static bool is_verbose, to_validate, to_list, to_extract, to_create = false;
+static bool is_verbose, magic_mike = false;
 static struct stat folio_file;
+static folio_action_t action = ACTION_NONE;
+static struct stat member_stat;
 
 int main(int argc, char *argv[])
 {
@@ -46,22 +54,22 @@ int main(int argc, char *argv[])
         {
             switch(opt)
             {
-                case EXTRACT:
-                    //if no [-f] [filename] option used, default to reading from stdin
-                    to_extract = true;
-                    break;
                 case CREATE:
                     //if no [-f] [filename] option used, default to writing to stdout
-                    to_create = true;
+                    action = ACTION_CREATE;
+                    break;
+                case EXTRACT:
+                    //if no [-f] [filename] option used, default to reading from stdin
+                    action = ACTION_EXTRACT;
+                    break;
+                case VALIDATE:
+                    action = ACTION_VALIDATE;
                     break;
                 case S_TABLE:
-                    to_list = true;
+                    action = ACTION_TOC_SHORT;
                     break;
                 case FILENAME:
                     archive_file = optarg;
-                    break;
-                case VALIDATE:
-                    to_validate = true;
                     break;
                 case VERBOSE:
                     is_verbose = true;
@@ -79,151 +87,192 @@ int main(int argc, char *argv[])
         }
     }
 
-    //check that multiple options weren't passed
-    {    
-        if(!to_extract && !to_create)
-        {
-            perror("\nOne option required: [-x] or [-c]");
-            fprintf(stderr, "One option required: [-x] or [-c]...\n");
-            exit(INVALID_CMD_OPTION);
-        }
-        if(to_extract && to_create)
-        {
-            perror("\nMultiple options provided: [-x] and [-c]");
-            fprintf(stderr, "Multiple options provided: [-x] and [-c]...\n");
-            exit(INVALID_CMD_OPTION);
-        }
-    }
-    
-    //process remaining command line arguments
+    //handle cmd line critical
     {
+        if(action == ACTION_NONE)
+        {
+            perror("\nNo options provided");
+            fprintf(stderr, "No options provided...\n");
+            exit(INVALID_CMD_OPTION);
+        }
+        
+        if(is_verbose && (action == ACTION_TOC_SHORT))
+        {
+            action = ACTION_TOC_LONG;
+        }
+      
         if(optind < argc)
         {
-            //IMPORTANT:
-            // - if extracting, no command line arguments should be given
-            //  - if verbose flag used, print members extracted
-            // - if creating, process command line arguments
-            //  - if verbose flags used, print members to add
-            if(is_verbose)
-            {
-                fprintf(stdout, "\nThe following members will be used:\n");
-            }
-            //process remaining command line arguments...
-            for(int i = optind; i < argc; ++i)
-            {
-                //what does processing the remaining arguments mean?
-                //Do I need to add them to the folio_header_t member name
-                if(is_verbose)
-                {
-                    printf("\t%s\n", argv[i]);
-                }
-            }
+            magic_mike = true;
         }
     }
 
-    //if folio file name passed, we can folio/pipe. Otherwise, use open(), read(), write()
     { 
-        //open flags
-        int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
-        //file permissions: -rw-rw-r--
-        mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
-
-        if(!archive_file)
+        //use this as a "plan"; doesn't matter if you re-write code; start with something then make it better
+        switch(action)
         {
-            if(to_extract)
-            {
-                folio_fd = STDIN_FILENO;
-                //add stream reading here
-            }
-            else 
-            {
-                folio_fd = STDOUT_FILENO;
-                //add stream writing here
-            }
-        }
-        else
-        {
-            //do not create file; only read
-            if(to_extract)
-            {
-                folio_fd = open(archive_file, O_RDONLY);
-                if(folio_fd == -1)
-                {
-                    perror("\nFailed to open file");
-                    fprintf(stderr, "Failed to open...\n");
-                    exit(CANNOT_OPEN_MEMB);
-                }
-            }
-            else
-            {
-                folio_fd = open(archive_file, open_flags, file_perms);
-                if(folio_fd == -1)
-                {
-                    perror("\nFailed to open file");
-                    fprintf(stderr, "Failed to open...\n");
-                    exit(CANNOT_OPEN_FOLIO);
-                }
-                //only if creating file
-                //change file permissions
-                if(fchmod(folio_fd, file_perms) == -1)
-                {
-                    perror("\nFailed to set file permissions");
-                    fprintf(stderr, "\nFailed to set file permissions...");
-                    close(folio_fd);
-                    exit(CANNOT_OPEN_FOLIO);
-                }
-                //get stat info
-                if(fstat(folio_fd, &folio_file) == -1)
-                {
-                    perror("\nFailed to stat file");
-                    fprintf(stderr, "\nFailed to stat file...");
-                    close(folio_fd);
-                    exit(CANNOT_STAT_FILE);
-                }
-            }
+            case ACTION_CREATE:
+                create();
+                break;
+            case ACTION_EXTRACT:
+                extract();
+                break;
+            case ACTION_VALIDATE:
+                validate();
+                break;
+            case ACTION_TOC_SHORT:
+                list_short();
+                break;
+            case ACTION_TOC_LONG:
+                list_long();
+                break;
+            default:
+                break;
         }
     }
 
-    //validate magic number header first thing
-
-    //fork and pipe here?
-
-
-    if(is_verbose)
-    {
-        fprintf(stdout, "\nProviding additional information...\n");
-    }
     return(EXIT_SUCCESS);
 }
 
-//add open(), read(), write() file handlers
-/*
- * Binary files require using:
- * int open(),
- * int read(),
- * int write()
-*/
+//command line stuff
+void members(int argc, char *argv[])
+{
+    //process remaining command line arguments
+    if(optind < argc)
+    {
+        if(is_verbose)
+        {
+            fprintf(stdout, "\nThe following members will be used:\n");
+        }
+        for(int i = optind; i < argc; ++i)
+        {
+            if(is_verbose)
+            {
+                printf("\t%s\n", argv[i]);
+            }
+        }
+    }
+}
 
-//other utilities to consider
-/*
- * lseek() -> move through folio sections,
- * fork(),
- * exec() family of functions
-*/
+void create(void)
+{
+    //open flags
+    int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
+    //file permissions: -rw-rw-r--
+    mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
 
-//print help message
+    //no archive-file provided
+    if(!archive_file)
+    {
+        folio_fd = STDOUT_FILENO;
+        //if no members provided
+        if(!magic_mike)
+        {
+            if(-1 == write(folio_fd, FOLIO_MAGIC, strlen(FOLIO_MAGIC)))
+            {
+                perror("\nFailed to write magic");
+                fprintf(stderr, "\nFailed to write magic...");
+                exit(BAD_MAGIC);
+            }
+        }
+        //members provided
+        else
+        {
+            //write members to stdout
+        }
+    }
+    //archive-file provided
+    else
+    {
+        folio_fd = open(archive_file, open_flags, file_perms);
+        if(folio_fd == -1)
+        {
+            perror("\nFailed to open file");
+            fprintf(stderr, "Failed to open...\n");
+            exit(CANNOT_OPEN_FOLIO);
+        }
+        //change file permissions
+        if(fchmod(folio_fd, file_perms) == -1)
+        {
+            perror("\nFailed to set file permissions");
+            fprintf(stderr, "\nFailed to set file permissions...");
+            close(folio_fd);
+            exit(CANNOT_OPEN_FOLIO);
+        }
+        //no members provided
+        if(!magic_mike)
+        {
+            if(-1 == write(folio_fd, FOLIO_MAGIC, strlen(FOLIO_MAGIC)))
+            {
+                perror("\nFailed to write magic");
+                fprintf(stderr, "\nFailed to write magic...");
+                close(folio_fd);
+                exit(BAD_MAGIC);
+            }
+        }
+        //members provided
+        else
+        {
+            //write members to file
+        }
+    }
+}
+
+void extract(void)
+{
+    if(!archive_file)
+    {
+        folio_fd = STDIN_FILENO;
+        //add stream reading here
+    }
+    else
+    {
+        folio_fd = open(archive_file, O_RDONLY);
+        if(folio_fd == -1)
+        {
+            perror("\nFailed to open file");
+            fprintf(stderr, "Failed to open...\n");
+            exit(CANNOT_OPEN_MEMB);
+        }
+        //get stat info
+        if(fstat(folio_fd, &folio_file) == -1)
+        {
+            perror("\nFailed to stat file");
+            fprintf(stderr, "\nFailed to stat file...");
+            close(folio_fd);
+            exit(CANNOT_STAT_FILE);
+        }
+    }
+}
+
+void validate(void)
+{
+
+}
+
+void list_short(void)
+{
+
+}
+
+void list_long(void)
+{
+
+}
+
 void help(char *prog_name)
 {
-    printf("\nDescription:");
-    printf("\nAdd description.\n");
-    printf("\nUsage:\n");
-    printf("\t%s <OPTIONS> [-f FILENAME] [members [...]]\n", prog_name);
-    printf("Options:\n");
-    printf("\t[-x] Members extracted from folio file.\n");
-    printf("\t[-c] Create a folio style archive file. Names of files to go into archive need to be provided.\n");
-    printf("\t[-f] [FILENAME] Specify the name of the folio file on which to operate.\n");
-    printf("\t[-V] Validate the MD5 value for the header and data for each archive member.\n");
-    printf("\t[-t] List table of contents. Add '-v' for additional info.\n");
-    printf("\t[-v] Provide additional information.\n");
-    printf("\t[-h] Provide helpful information regarding program use.\n");
+    printf("help text");
+    printf("\n\tLab3/%s", prog_name);
+    printf("\n\tOptions: %s", OPTIONS);
+    printf("\n\t\t-x\t\textract file/files from archive");
+    printf("\n\t\t-c\t\tcreate an archive file");
+    printf("\n\t\t-t\t\tdisplay a short table of contents of the archive file");
+    printf("\n\t\t-T\t\tdisplay a long table of contents of the archive file");
+    printf("\n\t\tOnly one of xctTV can be specified");
+    printf("\n\t\t-f filename	use filename as the archive file");
+    printf("\n\t\t-V\t\tvalidate the MD5 hash values in the folio file");
+    printf("\n\t\t-v\t\tgive verbose diagnostic messages");
+    printf("\n\t\t-h\t\tdisplay this AMAZING help message");
+    printf("\n");
 }
