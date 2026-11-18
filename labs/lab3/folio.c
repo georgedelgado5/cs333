@@ -29,14 +29,12 @@
 #define VERBOSE 'v'
 #define HELP 'h'
 
-//archive file methods
 bool is_magic(char *);
 bool file_exists(char *);
-char **get_members(int, char *[]);
-
-
-//helper methods
 void create(char *, char **);
+char **get_members(int, char *[]);
+void archive(char *);
+
 void extract(void);
 void validate(void);
 void list_short(void);
@@ -46,6 +44,10 @@ void help(char *);
 //static variables used across multiple methods
 static int archive_fd = -1; // used to read/write depending on extract/create
 static bool is_verbose = false;
+//open flags
+static int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
+//file permissions: -rw-rw-r--
+static mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
 
 int main(int argc, char *argv[])
 {
@@ -194,6 +196,7 @@ bool is_magic(char *file)
     return true;
 }
 
+//is this necessary?
 bool file_exists(char *file)
 {
     struct stat file_stat;
@@ -207,12 +210,6 @@ bool file_exists(char *file)
 
 void create(char *file, char **members)
 {
-    //open flags
-    int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
-    //file permissions: -rw-rw-r--
-    mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
-    struct stat file_stat;
-
     if(file)
     {
         //open file
@@ -247,8 +244,6 @@ void create(char *file, char **members)
     }
     else
     {
-        //loop through members and create files
-        //test print members
         if(is_verbose)
         {
             fprintf(stdout, "These are the following members to be used:");
@@ -266,7 +261,88 @@ void create(char *file, char **members)
             }
             fprintf(stdout, "\n");
         }
+        {
+            //write folio magic to start with
+            if(-1 == write(archive_fd, FOLIO_MAGIC, strlen(FOLIO_MAGIC)))
+            {
+                fprintf(stderr, "\nFailed to write to %s\n", file);
+                if(file)
+                {
+                    close(archive_fd);
+                }
+                exit(EXIT_FAILURE);
+            }
+            //loop through members and create files
+            for(int i = 0; members[i] != NULL; ++i)
+            {
+                archive(members[i]);
+            }
+            close(archive_fd);
+        }
+
     }
+}
+
+//add one file at a time
+void archive(char *file)
+{
+    ssize_t bytes_write = 0;
+    struct stat file_stat;
+    folio_header_t header;
+    //will add footer once I get to validation
+    //folio_footer_t footer;
+    int fd = -1;
+
+    //potential issues opening with permissions
+    //might have to check permissions first
+    fd = open(file, O_RDONLY);
+    if(-1 == fd)
+    {
+        fprintf(stderr, "\nFailed to open %s", file);
+        exit(CANNOT_OPEN_MEMB);
+    }
+    if(-1 == stat(file, &file_stat))
+    {
+        fprintf(stderr, "\nFailed to stat %s", file);
+        close(fd);
+        exit(CANNOT_STAT_FILE);
+    }
+
+    //start setting data
+    {
+        header.st_size = file_stat.st_size;
+        header.st_mode = file_stat.st_mode;
+        header.st_uid = file_stat.st_uid;
+        header.st_gid = file_stat.st_gid;
+        header.st_atim = file_stat.st_atim;
+        header.st_mtim = file_stat.st_mtim;
+        header.name_length = strlen(file);
+        strcpy(header.member_name, file);
+    }
+
+    //write header
+    {
+       bytes_write = write(archive_fd, &header, header.st_size); 
+       if(-1 == bytes_write)
+       {
+           fprintf(stderr, "\nFailed to write %s", file);
+           close(fd);
+           exit(EXIT_FAILURE);
+       }
+    }
+
+    bytes_write = 0;
+    //write file name
+    {
+       bytes_write = write(archive_fd, &header.name_length, sizeof(header.name_length)); 
+       if(-1 == bytes_write)
+       {
+           fprintf(stderr, "\nFailed to write %s", file);
+           close(fd);
+           exit(EXIT_FAILURE);
+       }
+    }
+    close(fd);
 }
 
 //command line stuff
@@ -281,7 +357,7 @@ char **get_members(int argc, char *argv[])
         return NULL;
     }
     //add one (+1) to get NULL terminator
-    members = malloc( (member_count * sizeof(members)) + 1);
+    members = malloc((member_count + 1) * sizeof(members));
     if(!members)
     {
         fprintf(stderr, "\nMalloc failed...\n");

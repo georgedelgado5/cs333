@@ -22,7 +22,7 @@ CFLAGS= $(DEBUG) $(WFLAGS)
 CFLAGS+= $(LOCAL_INCLUDES)
 LDFLAGS=
 #LDFLAGS+=
-PERMS= g+x
+PERMS= g+rw,o+r
 PROG1= folio
 PROG2=
 PROG3=
@@ -33,6 +33,7 @@ all: $(PROGS)
 
 $(PROG1): $(PROG1).o
 	$(CC) -o $(PROG1) $(PROG1).o $(LDFLAGS)
+	chmod $(PERMS) $(PROGS).c
 
 $(PROG1).o: $(PROG1).c $(HEADER)
 	$(CC) $(CFLAGS) -c $(PROG1).c -lmd
@@ -47,7 +48,7 @@ clean:
 TAR_FILE= ${LOGNAME}-$(ASSIGNMENT).tar.gz
 tar: clean
 	rm -f $(TAR_FILE)
-	tar cvaf $(TAR_FILE) *.[c] [Mm]akefile
+	tar cvaf $(TAR_FILE) $(PROGS).[c] [Mm]akefile
 	tar tvaf $(TAR_FILE)
 
 test: all
