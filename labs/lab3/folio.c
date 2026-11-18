@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-//md5 -> see man 3bsd md5
+//md5 -> see man 3 MD5Data
 #include <sys/types.h>
 #include <md5.h>
 //file descriptors STDOUT, STDIN, ...
@@ -29,9 +29,14 @@
 #define VERBOSE 'v'
 #define HELP 'h'
 
+//archive file methods
+bool is_magic(char *);
+bool file_exists(char *);
+char **get_members(int, char *[]);
+
+
 //helper methods
-void members(int, char *[]);
-void create(void);
+void create(char *, char **);
 void extract(void);
 void validate(void);
 void list_short(void);
@@ -39,14 +44,14 @@ void list_long(void);
 void help(char *);
 
 //static variables used across multiple methods
-static char *archive_file = NULL;
-static int folio_fd = -1; // used to read/write depending on extract/create
-static bool is_verbose, magic_mike = false;
-static struct stat folio_file;
-static folio_action_t action = ACTION_NONE;
+static int archive_fd = -1; // used to read/write depending on extract/create
+static bool is_verbose = false;
 
 int main(int argc, char *argv[])
 {
+    char *archive_file = NULL;
+    char **members = NULL;
+    folio_action_t action = ACTION_NONE;
     {
         int opt = 0;
         while((opt = getopt(argc, argv, OPTIONS)) != -1)
@@ -78,7 +83,6 @@ int main(int argc, char *argv[])
                     exit(NO_ACTION);
                 default:
                     help(argv[0]);
-                    perror("\nInvalid command line option");
                     fprintf(stderr, "Invalid command line option...\n");
                     exit(INVALID_CMD_OPTION);
                     break;
@@ -90,19 +94,36 @@ int main(int argc, char *argv[])
     {
         if(action == ACTION_NONE)
         {
-            perror("\nNo options provided");
             fprintf(stderr, "No options provided...\n");
             exit(INVALID_CMD_OPTION);
         }
+
+        if((optind < argc) && (action != ACTION_CREATE))
+        {
+            fprintf(stderr, "Only create [-c] flag requires members...\n");
+            exit(INVALID_CMD_OPTION);
+        }
         
+        if(optind < argc)
+        {
+            //get members here
+            members = get_members(argc, argv); 
+        }
+
         if(is_verbose && (action == ACTION_TOC_SHORT))
         {
             action = ACTION_TOC_LONG;
         }
-      
-        if(optind < argc)
+        
+        //check folio magic for all flags not including create
+        //if does not contain folio magic, exit with bad magic
+        if(action != ACTION_CREATE)
         {
-            magic_mike = true;
+            if(!is_magic(archive_file))
+            {
+                fprintf(stderr, "Invalid folio magic...\n");
+                exit(BAD_MAGIC);
+            }
         }
     }
 
@@ -111,7 +132,8 @@ int main(int argc, char *argv[])
         switch(action)
         {
             case ACTION_CREATE:
-                create();
+                create(archive_file, members);
+                free(members);
                 break;
             case ACTION_EXTRACT:
                 extract();
@@ -129,130 +151,158 @@ int main(int argc, char *argv[])
                 break;
         }
     }
-
-    return(EXIT_SUCCESS);
+    exit(EXIT_SUCCESS);
 }
 
-//command line stuff
-void members(int argc, char *argv[])
+bool is_magic(char *file)
 {
-    struct stat member_stat;
-    //folio_footer_t footer;
-    //process remaining command line arguments
-    if(optind < argc)
+    //size of includes null terminator
+    char buf[sizeof(FOLIO_MAGIC)] = {'\0'};
+    int fd = -1;
+
+    if(file)
     {
-        if(is_verbose)
+        fd = open(file, O_RDONLY);
+        if(fd == -1)
         {
-            fprintf(stdout, "\nThe following members will be used:\n");
-        }
-        for(int i = optind; i < argc; ++i)
-        {
-            //fstat members
-            if(fstat(folio_fd, &member_stat) == -1)
-            {
-                perror("\nFailed to fstat file");
-                fprintf(stderr, "\nFailed to fstat file...");
-                close(folio_fd);
-                exit(CANNOT_STAT_FILE);
-            }
-            //write members to stdout or file
-            if(is_verbose)
-            {
-                printf("\t%s\n", argv[i]);
-            }
+            fprintf(stderr, "Failed to open file...\n");
+            return false;
         }
     }
+    else
+    {
+        fd = STDIN_FILENO;
+    }
+    //using strlen here instead of sizeof to only read string bytes and not include null terminator
+    if(-1 == read(fd, buf, strlen(FOLIO_MAGIC)))
+    {
+        fprintf(stderr, "Failed to read file...\n");
+        if(file)
+        {
+            close(fd);
+        }
+        return false;
+    }
+    if(file)
+    {
+        close(fd);
+    }
+    if(strcmp(buf, FOLIO_MAGIC) != 0)
+    {
+        return false;
+    }
+    return true;
 }
 
-void create(void)
+bool file_exists(char *file)
+{
+    struct stat file_stat;
+
+    if(-1 == stat(file, &file_stat))
+    {
+        return false;
+    }
+    return true;
+}
+
+void create(char *file, char **members)
 {
     //open flags
     int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
     //file permissions: -rw-rw-r--
     mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
+    struct stat file_stat;
 
-    //no archive-file provided
-    if(!archive_file)
+    if(file)
     {
-        folio_fd = STDOUT_FILENO;
-        //if no members provided
-        if(!magic_mike)
+        //open file
+        archive_fd = open(file, open_flags, file_perms);
+        if(-1 == archive_fd)
         {
-            if(-1 == write(folio_fd, FOLIO_MAGIC, strlen(FOLIO_MAGIC)))
-            {
-                perror("\nFailed to write magic");
-                fprintf(stderr, "\nFailed to write magic...");
-                exit(BAD_MAGIC);
-            }
-        }
-        //members provided
-        else
-        {
-            //write members to stdout
+            fprintf(stderr, "Failed to open %s\n", file);
+            exit(CANNOT_OPEN_FOLIO);
         }
     }
-    //archive-file provided
     else
     {
-        folio_fd = open(archive_file, open_flags, file_perms);
-        if(folio_fd == -1)
+        archive_fd = STDOUT_FILENO;
+    }
+        
+    //check if members (aka files) were provided
+    if(!members)
+    {
+        if(-1 == write(archive_fd, FOLIO_MAGIC, strlen(FOLIO_MAGIC)))
         {
-            perror("\nFailed to open file");
-            fprintf(stderr, "Failed to open...\n");
-            exit(CANNOT_OPEN_FOLIO);
-        }
-        //change file permissions
-        if(fchmod(folio_fd, file_perms) == -1)
-        {
-            perror("\nFailed to set file permissions");
-            fprintf(stderr, "\nFailed to set file permissions...");
-            close(folio_fd);
-            exit(CANNOT_OPEN_FOLIO);
-        }
-        //no members provided
-        if(!magic_mike)
-        {
-            if(-1 == write(folio_fd, FOLIO_MAGIC, strlen(FOLIO_MAGIC)))
+            fprintf(stderr, "\nFailed to write to %s\n", file);
+            if(file)
             {
-                perror("\nFailed to write magic");
-                fprintf(stderr, "\nFailed to write magic...");
-                close(folio_fd);
-                exit(BAD_MAGIC);
+                close(archive_fd);
             }
+            exit(EXIT_FAILURE);
         }
-        //members provided
-        else
+        if(file)
         {
-            //write members to file
+            close(archive_fd);
+        }
+    }
+    else
+    {
+        //loop through members and create files
+        //test print members
+        if(is_verbose)
+        {
+            fprintf(stdout, "These are the following members to be used:");
+            for(int i = 0; members[i] != NULL; ++i)
+            {
+                if(i == 0)
+                {
+                    fprintf(stdout, "\n\t  %s", members[i]);
+                }
+                else
+                {
+                    fprintf(stdout, "\n\t, %s", members[i]);
+                }
+
+            }
+            fprintf(stdout, "\n");
         }
     }
 }
 
+//command line stuff
+char **get_members(int argc, char *argv[])
+{
+    int member_count = (argc - optind);
+    char **members = {NULL};
+    int member_index = 0;
+
+    if(!argv[optind])
+    {
+        return NULL;
+    }
+    //add one (+1) to get NULL terminator
+    members = malloc( (member_count * sizeof(members)) + 1);
+    if(!members)
+    {
+        fprintf(stderr, "\nMalloc failed...\n");
+        exit(EXIT_FAILURE);
+    }
+    if(optind < argc)
+    {
+        for(int i = optind; argv[i] != NULL; ++i)
+        {
+            members[member_index] = argv[i];
+            ++member_index;
+        }
+        //null terminate array of strings
+        members[member_index] = NULL;
+    }
+    return members;
+}
+
 void extract(void)
 {
-    if(!archive_file)
-    {
-        folio_fd = STDIN_FILENO;
-        //add stream reading here
-    }
-    else
-    {
-        folio_fd = open(archive_file, O_RDONLY);
-        if(folio_fd == -1)
-        {
-            perror("\nFailed to open file");
-            fprintf(stderr, "Failed to open...\n");
-            exit(CANNOT_OPEN_MEMB);
-        }
-        //get stat info
-        if(fstat(folio_fd, &folio_file) == -1)
-        {
-            perror("\nFailed to stat file");
-            fprintf(stderr, "\nFailed to stat file...");
-            close(folio_fd);
-            exit(CANNOT_STAT_FILE);
-        }
-    }
+         
 }
 
 void validate(void)
