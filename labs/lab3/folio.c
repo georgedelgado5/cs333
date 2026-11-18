@@ -342,6 +342,16 @@ void archive(char *file)
            exit(EXIT_FAILURE);
        }
     }
+
+    //write data
+    {
+
+    }
+
+    //write footer
+    {
+
+    }
     close(fd);
 }
 
@@ -378,6 +388,7 @@ char **get_members(int argc, char *argv[])
 
 void extract(void)
 {
+    //like with create using archive, should I use extract with build(...)?
          
 }
 
@@ -388,6 +399,7 @@ void validate(void)
 
 void list_short(void)
 {
+    //might be worth writing this and long table as tests start with TOC
 
 }
 
@@ -396,6 +408,7 @@ void list_long(void)
 
 }
 
+//[-T] flag not actually used; Instead use [-t] and [-v] to produce [-T] results
 void help(char *prog_name)
 {
     printf("help text");
