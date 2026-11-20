@@ -37,8 +37,8 @@ void archive(char *);
 
 void extract(void);
 void validate(void);
-void list_short(void);
-void list_long(void);
+void list_short(char *);
+void list_long(char *);
 void help(char *);
 
 //static variables used across multiple methods
@@ -74,6 +74,9 @@ int main(int argc, char *argv[])
                 case S_TABLE:
                     action = ACTION_TOC_SHORT;
                     break;
+                case L_TABLE:
+                    action = ACTION_TOC_LONG;
+                    break;
                 case FILENAME:
                     archive_file = optarg;
                     break;
@@ -90,6 +93,15 @@ int main(int argc, char *argv[])
                     break;
             }
         }
+    }
+
+    if(!archive_file && action != ACTION_CREATE)
+    {
+        archive_file = "stdin";
+    }
+    else if(!archive_file && action == ACTION_CREATE)
+    {
+        archive_file = "stdout";
     }
 
     //handle cmd line critical
@@ -121,9 +133,14 @@ int main(int argc, char *argv[])
         //if does not contain folio magic, exit with bad magic
         if(action != ACTION_CREATE)
         {
+            if(is_verbose)
+            {
+                fprintf(stderr, "verbose level: 1\n");
+            }
+            fprintf(stderr, "reading archive file: \"%s\"\n", archive_file);
             if(!is_magic(archive_file))
             {
-                fprintf(stderr, "Invalid folio magic...\n");
+                fprintf(stderr, "not a folio file: \"%s\"\n", archive_file);
                 exit(BAD_MAGIC);
             }
         }
@@ -144,10 +161,10 @@ int main(int argc, char *argv[])
                 validate();
                 break;
             case ACTION_TOC_SHORT:
-                list_short();
+                list_short(archive_file);
                 break;
             case ACTION_TOC_LONG:
-                list_long();
+                list_long(archive_file);
                 break;
             default:
                 break;
@@ -162,7 +179,7 @@ bool is_magic(char *file)
     char buf[sizeof(FOLIO_MAGIC)] = {'\0'};
     int fd = -1;
 
-    if(file)
+    if(strcmp(file, "stdin") != 0)
     {
         fd = open(file, O_RDONLY);
         if(fd == -1)
@@ -179,13 +196,13 @@ bool is_magic(char *file)
     if(-1 == read(fd, buf, strlen(FOLIO_MAGIC)))
     {
         fprintf(stderr, "Failed to read file...\n");
-        if(file)
+        if(strcmp(file, "stdin") !=0)
         {
             close(fd);
         }
         return false;
     }
-    if(file)
+    if(strcmp(file, "stdin") != 0)
     {
         close(fd);
     }
@@ -210,7 +227,7 @@ bool file_exists(char *file)
 
 void create(char *file, char **members)
 {
-    if(file)
+    if(strcmp(file, "stdout") != 0)
     {
         //open file
         archive_fd = open(file, open_flags, file_perms);
@@ -231,13 +248,13 @@ void create(char *file, char **members)
         if(-1 == write(archive_fd, FOLIO_MAGIC, strlen(FOLIO_MAGIC)))
         {
             fprintf(stderr, "\nFailed to write to %s\n", file);
-            if(file)
+            if(strcmp(file, "stdout") != 0)
             {
                 close(archive_fd);
             }
             exit(EXIT_FAILURE);
         }
-        if(file)
+        if(strcmp(file, "stdout") != 0)
         {
             close(archive_fd);
         }
@@ -246,27 +263,27 @@ void create(char *file, char **members)
     {
         if(is_verbose)
         {
-            fprintf(stdout, "These are the following members to be used:");
+            fprintf(stderr, "These are the following members to be used:");
             for(int i = 0; members[i] != NULL; ++i)
             {
                 if(i == 0)
                 {
-                    fprintf(stdout, "\n\t  %s", members[i]);
+                    fprintf(stderr, "\n\t  %s", members[i]);
                 }
                 else
                 {
-                    fprintf(stdout, "\n\t, %s", members[i]);
+                    fprintf(stderr, "\n\t, %s", members[i]);
                 }
 
             }
-            fprintf(stdout, "\n");
+            fprintf(stderr, "\n");
         }
         {
             //write folio magic to start with
             if(-1 == write(archive_fd, FOLIO_MAGIC, strlen(FOLIO_MAGIC)))
             {
                 fprintf(stderr, "\nFailed to write to %s\n", file);
-                if(file)
+                if(strcmp(file, "stdout") != 0)
                 {
                     close(archive_fd);
                 }
@@ -279,7 +296,6 @@ void create(char *file, char **members)
             }
             close(archive_fd);
         }
-
     }
 }
 
@@ -397,15 +413,70 @@ void validate(void)
 
 }
 
-void list_short(void)
+void list_short(char *file)
 {
-    //might be worth writing this and long table as tests start with TOC
+    int fd = STDIN_FILENO;
+    folio_header_t header;
 
+    if(strcmp(file, "stdin") != 0)    
+    {
+        fd = open(file, O_RDONLY);
+        if(-1 == fd)
+        {
+            fprintf(stderr, "\nFailed to open %s", file);
+            exit(CANNOT_OPEN_FOLIO);
+        }
+
+        if((lseek(fd, strlen(FOLIO_MAGIC), SEEK_SET) == -1))
+        {
+            fprintf(stderr, "\nFailed to lseek");
+            close(fd);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    fprintf(stderr, "Contents of folio file: \"%s\"", file);
+    //read into local header structure the contents of file of 64 bytes
+    //header structure contains data about file name length, file data size, and file footer size -> we need this data to cycle through each portion of data blocks
+    while((read(fd, &header, sizeof(folio_header_t))) == sizeof(folio_header_t))
+    {
+        //place bytes_to_skip in while to reset for every header 
+        off_t bytes_to_skip = 0;
+        char filename[header.name_length + 1];
+        memset(filename, '\0', sizeof(filename));
+
+        if((read(fd, filename, header.name_length) != (ssize_t)(header.name_length)))
+        {
+           fprintf(stderr, "\nFailed to read member name");
+           if(strcmp(file, "stdin") != 0)
+           {
+               close(fd);
+           }
+           exit(MEMBER_READ_FAIL);
+        }
+        fprintf(stderr, "\n\tfile name: %s", filename);
+        
+        //skip data and footer 
+        bytes_to_skip = header.st_size + sizeof(folio_footer_t);
+        if((lseek(fd, bytes_to_skip, SEEK_CUR)) == -1)
+        {
+            if(strcmp(file, "stdin") != 0)
+            {
+                close(fd);
+            }
+            exit(NO_ACTION);
+        }
+    }
+    fprintf(stderr, "\n");
+    if(strcmp(file, "stdin") != 0)
+    {
+        close(fd);
+    }
 }
 
-void list_long(void)
+void list_long(char *file)
 {
-
+    list_short(file);
 }
 
 //[-T] flag not actually used; Instead use [-t] and [-v] to produce [-T] results

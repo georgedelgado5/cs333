@@ -55,7 +55,7 @@ test: all
 	./$(PROGS)-test.bash
 
 ARGS=
-#ARGS+=
+ARGS+= -t -v -f 3-archive-members.folio
 gdb: all
 	gdb -tui ./$(PROGS) $(ARGS)
 
