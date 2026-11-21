@@ -11,7 +11,7 @@ HEADER= /u/rchaney/Classes/cs333/Labs/Lab3/folio.h
 CC= gcc
 DEBUG= -g3
 WERROR=
-#WERROR+= -Werror
+WERROR+= -Werror
 WFLAGS= -Wall -Wextra -Wshadow -Wunreachable-code -Wredundant-decls \
 		-Wmissing-declarations -Wold-style-definition \
 		-Wmissing-prototypes -Wdeclaration-after-statement \
@@ -21,7 +21,7 @@ WFLAGS= -Wall -Wextra -Wshadow -Wunreachable-code -Wredundant-decls \
 CFLAGS= $(DEBUG) $(WFLAGS)
 CFLAGS+= $(LOCAL_INCLUDES)
 LDFLAGS=
-#LDFLAGS+=
+LDFLAGS+= -lmd
 PERMS= g+rw,o+r
 PROG1= folio
 PROG2=
@@ -36,7 +36,7 @@ $(PROG1): $(PROG1).o
 	chmod $(PERMS) $(PROGS).c
 
 $(PROG1).o: $(PROG1).c $(HEADER)
-	$(CC) $(CFLAGS) -c $(PROG1).c -lmd
+	$(CC) $(CFLAGS) -c $(PROG1).c
 
 .PHONY: all clean tar test gdb val
 

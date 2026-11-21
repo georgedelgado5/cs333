@@ -4,6 +4,10 @@
  * lab3
 */
 
+/*
+ *I used Chaney's src/ files as a resource. I also used AI to help me towards of the end of this assignment. 
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
@@ -11,6 +15,10 @@
 #include <stdbool.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
+//getpwuid, getgrgid -> user/group names for long toc
+#include <pwd.h>
+#include <grp.h>
 //md5 -> see man 3 MD5Data
 #include <sys/types.h>
 #include <md5.h>
@@ -28,24 +36,22 @@
 #define FILENAME 'f'
 #define VERBOSE 'v'
 #define HELP 'h'
+#define BUF_SIZE 1024
 
 bool is_magic(char *);
 bool file_exists(char *);
 void create(char *, char **);
 char **get_members(int, char *[]);
-void archive(char *);
+void archive(int, char *);
 
-void extract(void);
-void validate(void);
-void list_short(char *);
-void list_long(char *);
+void extract(char *);
+void validate(char *);
+void list_short(char *, bool);
 void help(char *);
 
-//static variables used across multiple methods
-static int archive_fd = -1; // used to read/write depending on extract/create
 static bool is_verbose = false;
 //open flags
-static int open_flags = (O_CREAT | O_WRONLY | O_TRUNC);
+static int open_flags = (O_CREAT | O_RDWR | O_TRUNC);
 //file permissions: -rw-rw-r--
 static mode_t file_perms = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
 
@@ -95,13 +101,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    if(!archive_file && action != ACTION_CREATE)
+    if(!archive_file)
     {
-        archive_file = "stdin";
-    }
-    else if(!archive_file && action == ACTION_CREATE)
-    {
-        archive_file = "stdout";
+        if(action != ACTION_CREATE)
+        {
+            archive_file = "stdin";
+        }
+        else
+        {
+            archive_file = "stdout";
+        }
     }
 
     //handle cmd line critical
@@ -120,27 +129,23 @@ int main(int argc, char *argv[])
         
         if(optind < argc)
         {
-            //get members here
             members = get_members(argc, argv); 
         }
 
-        if(is_verbose && (action == ACTION_TOC_SHORT))
-        {
-            action = ACTION_TOC_LONG;
-        }
-        
         //check folio magic for all flags not including create
         //if does not contain folio magic, exit with bad magic
         if(action != ACTION_CREATE)
         {
-            if(is_verbose)
+            if(strcmp(archive_file, "stdin") == 0)
             {
-                fprintf(stderr, "verbose level: 1\n");
+                fprintf(stderr, "reading archive from stdin\n");
             }
-            fprintf(stderr, "reading archive file: \"%s\"\n", archive_file);
+            else if((action == ACTION_TOC_SHORT) || (action == (ACTION_TOC_LONG)))
+            {
+                fprintf(stderr, "reading archive file: \"%s\"\n", archive_file);
+            }
             if(!is_magic(archive_file))
             {
-                fprintf(stderr, "not a folio file: \"%s\"\n", archive_file);
                 exit(BAD_MAGIC);
             }
         }
@@ -155,16 +160,16 @@ int main(int argc, char *argv[])
                 free(members);
                 break;
             case ACTION_EXTRACT:
-                extract();
+                extract(archive_file);
                 break;
             case ACTION_VALIDATE:
-                validate();
+                validate(archive_file);
                 break;
             case ACTION_TOC_SHORT:
-                list_short(archive_file);
+                list_short(archive_file, false);
                 break;
             case ACTION_TOC_LONG:
-                list_long(archive_file);
+                list_short(archive_file, true);
                 break;
             default:
                 break;
@@ -175,9 +180,9 @@ int main(int argc, char *argv[])
 
 bool is_magic(char *file)
 {
+    int fd = STDIN_FILENO;
     //size of includes null terminator
     char buf[sizeof(FOLIO_MAGIC)] = {'\0'};
-    int fd = -1;
 
     if(strcmp(file, "stdin") != 0)
     {
@@ -185,12 +190,8 @@ bool is_magic(char *file)
         if(fd == -1)
         {
             fprintf(stderr, "Failed to open file...\n");
-            return false;
+            exit(CANNOT_OPEN_FOLIO);
         }
-    }
-    else
-    {
-        fd = STDIN_FILENO;
     }
     //using strlen here instead of sizeof to only read string bytes and not include null terminator
     if(-1 == read(fd, buf, strlen(FOLIO_MAGIC)))
@@ -208,6 +209,7 @@ bool is_magic(char *file)
     }
     if(strcmp(buf, FOLIO_MAGIC) != 0)
     {
+        fprintf(stderr, "not a folio file: \"%s\"\n", file);
         return false;
     }
     return true;
@@ -227,19 +229,20 @@ bool file_exists(char *file)
 
 void create(char *file, char **members)
 {
+    int archive_fd = STDOUT_FILENO;
+
     if(strcmp(file, "stdout") != 0)
     {
-        //open file
+        //open file storing old mask (rw-rw-r-- if new file)
+        mode_t old_mask = umask(0);
         archive_fd = open(file, open_flags, file_perms);
+        //restore old mask
+        umask(old_mask);
         if(-1 == archive_fd)
         {
             fprintf(stderr, "Failed to open %s\n", file);
             exit(CANNOT_OPEN_FOLIO);
         }
-    }
-    else
-    {
-        archive_fd = STDOUT_FILENO;
     }
         
     //check if members (aka files) were provided
@@ -292,22 +295,25 @@ void create(char *file, char **members)
             //loop through members and create files
             for(int i = 0; members[i] != NULL; ++i)
             {
-                archive(members[i]);
+                archive(archive_fd, members[i]);
             }
-            close(archive_fd);
+            if(strcmp(file, "stdout") != 0)
+            {
+                close(archive_fd);
+            }
         }
     }
 }
 
 //add one file at a time
-void archive(char *file)
+void archive(int archive_fd, char *file)
 {
-    ssize_t bytes_write = 0;
-    struct stat file_stat;
-    folio_header_t header;
-    //will add footer once I get to validation
-    //folio_footer_t footer;
+    //here fd is each member (file) to be archived
     int fd = -1;
+    folio_header_t header;
+    folio_footer_t footer;
+    struct stat member;
+    ssize_t bytes_read = 0;
 
     //potential issues opening with permissions
     //might have to check permissions first
@@ -317,7 +323,7 @@ void archive(char *file)
         fprintf(stderr, "\nFailed to open %s", file);
         exit(CANNOT_OPEN_MEMB);
     }
-    if(-1 == stat(file, &file_stat))
+    if(-1 == stat(file, &member))
     {
         fprintf(stderr, "\nFailed to stat %s", file);
         close(fd);
@@ -326,49 +332,70 @@ void archive(char *file)
 
     //start setting data
     {
-        header.st_size = file_stat.st_size;
-        header.st_mode = file_stat.st_mode;
-        header.st_uid = file_stat.st_uid;
-        header.st_gid = file_stat.st_gid;
-        header.st_atim = file_stat.st_atim;
-        header.st_mtim = file_stat.st_mtim;
-        header.name_length = strlen(file);
-        strcpy(header.member_name, file);
+        memset(&header, 0, sizeof(header));
+        memset(&footer, 0, sizeof(footer));
+        header.st_size = member.st_size;
+        header.st_mode = member.st_mode;
+        header.st_uid = member.st_uid;
+        header.st_gid = member.st_gid;
+        header.st_atim = member.st_atim;
+        header.st_mtim = member.st_mtim;
+        header.name_length = strlen(file) + 1;
     }
-
-    //write header
+            
     {
-       bytes_write = write(archive_fd, &header, header.st_size); 
-       if(-1 == bytes_write)
+        MD5_CTX header_context;
+       if(write(archive_fd, &header, sizeof(header)) != sizeof(header))
        {
            fprintf(stderr, "\nFailed to write %s", file);
            close(fd);
            exit(EXIT_FAILURE);
        }
-    }
-
-    bytes_write = 0;
-    //write file name
-    {
-       bytes_write = write(archive_fd, &header.name_length, sizeof(header.name_length)); 
-       if(-1 == bytes_write)
+       if(write(archive_fd, file, header.name_length) != (ssize_t)header.name_length) 
        {
            fprintf(stderr, "\nFailed to write %s", file);
            close(fd);
            exit(EXIT_FAILURE);
        }
+        MD5Init(&header_context);
+        MD5Update(&header_context, (const uint8_t *)&header, sizeof(header));
+        MD5Update(&header_context, (const uint8_t *)file, header.name_length);
+        MD5Final(footer.md5sum_header, &header_context);
     }
 
-    //write data
+    //read and write data
     {
+        unsigned char data_buf[BUF_SIZE] = {'\0'};
+       MD5_CTX data_context;
+       MD5Init(&data_context);
+       while((bytes_read = read(fd, data_buf, BUF_SIZE)) > 0)
+       {
+           MD5Update(&data_context, data_buf, bytes_read);
 
+            //typcast header.st_size because write returns ssize_t
+           if(write(archive_fd, data_buf, bytes_read) != bytes_read)
+           {
+               fprintf(stderr, "\nFailed to write %s", file);
+               close(fd);
+               exit(EXIT_FAILURE);
+           }
+       }
+       MD5Final(footer.md5sum_data, &data_context);
     }
+    close(fd);
 
     //write footer
     {
-
+       if(write(archive_fd, &footer, sizeof(footer)) != sizeof(footer))
+       {
+           fprintf(stderr, "\nFailed to write %s", file);
+           exit(EXIT_FAILURE);
+       }
     }
-    close(fd);
+    if(is_verbose)
+    {
+        fprintf(stderr, "added: %s\n", file);
+    }
 }
 
 //command line stuff
@@ -402,84 +429,473 @@ char **get_members(int argc, char *argv[])
     return members;
 }
 
-void extract(void)
-{
-    //like with create using archive, should I use extract with build(...)?
-         
-}
-
-void validate(void)
-{
-
-}
-
-void list_short(char *file)
+void extract(char *file)
 {
     int fd = STDIN_FILENO;
     folio_header_t header;
+    folio_footer_t footer;
+    unsigned char data_buf[BUF_SIZE] = {'\0'};
 
-    if(strcmp(file, "stdin") != 0)    
+    if(strcmp(file, "stdin") != 0)
     {
         fd = open(file, O_RDONLY);
         if(-1 == fd)
         {
-            fprintf(stderr, "\nFailed to open %s", file);
+            fprintf(stderr, "Failed to open %s\n", file);
             exit(CANNOT_OPEN_FOLIO);
         }
-
-        if((lseek(fd, strlen(FOLIO_MAGIC), SEEK_SET) == -1))
+        //skip past folio magic (already read for stdin)
+        if(read(fd, data_buf, strlen(FOLIO_MAGIC)) != (ssize_t)strlen(FOLIO_MAGIC))
         {
-            fprintf(stderr, "\nFailed to lseek");
+            fprintf(stderr, "not a folio file\n");
             close(fd);
-            exit(EXIT_FAILURE);
+            exit(BAD_MAGIC);
         }
     }
 
-    fprintf(stderr, "Contents of folio file: \"%s\"", file);
-    //read into local header structure the contents of file of 64 bytes
-    //header structure contains data about file name length, file data size, and file footer size -> we need this data to cycle through each portion of data blocks
-    while((read(fd, &header, sizeof(folio_header_t))) == sizeof(folio_header_t))
+    while(read(fd, &header, sizeof(header)) == (ssize_t)sizeof(header))
     {
-        //place bytes_to_skip in while to reset for every header 
-        off_t bytes_to_skip = 0;
-        char filename[header.name_length + 1];
-        memset(filename, '\0', sizeof(filename));
+        char *filename = NULL;
+        int ofd = -1;
+        off_t bytes_left = header.st_size;
+        //times[0] -> atime, times[1] -> mtime
+        struct timespec times[2];
 
-        if((read(fd, filename, header.name_length) != (ssize_t)(header.name_length)))
+        filename = malloc(sizeof(char) * header.name_length);
+        if(!filename)
         {
-           fprintf(stderr, "\nFailed to read member name");
-           if(strcmp(file, "stdin") != 0)
-           {
-               close(fd);
-           }
-           exit(MEMBER_READ_FAIL);
-        }
-        fprintf(stderr, "\n\tfile name: %s", filename);
-        
-        //skip data and footer 
-        bytes_to_skip = header.st_size + sizeof(folio_footer_t);
-        if((lseek(fd, bytes_to_skip, SEEK_CUR)) == -1)
-        {
+            fprintf(stderr, "\nFailed to allocate memory");
             if(strcmp(file, "stdin") != 0)
             {
                 close(fd);
             }
-            exit(NO_ACTION);
+            exit(EXIT_FAILURE);
         }
+        if(read(fd, filename, header.name_length) != (ssize_t)header.name_length)
+        {
+            fprintf(stderr, "\nFailed to read member name");
+            free(filename);
+            if(strcmp(file, "stdin") != 0)
+            {
+                close(fd);
+            }
+            exit(MEMBER_READ_FAIL);
+        }
+
+        //overwrite if file already exists
+        ofd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, file_perms);
+        if(-1 == ofd)
+        {
+            fprintf(stderr, "\nFailed to open %s", filename);
+            free(filename);
+            if(strcmp(file, "stdin") != 0)
+            {
+                close(fd);
+            }
+            exit(CANNOT_OPEN_MEMB);
+        }
+
+        //read and write data
+        while(bytes_left > 0)
+        {
+            size_t bytes_to_read = BUF_SIZE;
+            ssize_t bytes_read = 0;
+
+            if(bytes_left < BUF_SIZE)
+            {
+                bytes_to_read = (size_t)bytes_left;
+            }
+            bytes_read = read(fd, data_buf, bytes_to_read);
+            if(bytes_read <= 0)
+            {
+                fprintf(stderr, "\nFailed to read data for %s", filename);
+                close(ofd);
+                free(filename);
+                if(strcmp(file, "stdin") != 0)
+                {
+                    close(fd);
+                }
+                exit(MEMBER_READ_FAIL);
+            }
+            if(write(ofd, data_buf, bytes_read) != bytes_read)
+            {
+                fprintf(stderr, "\nFailed to write %s", filename);
+                close(ofd);
+                free(filename);
+                if(strcmp(file, "stdin") != 0)
+                {
+                    close(fd);
+                }
+                exit(EXIT_FAILURE);
+            }
+            bytes_left -= bytes_read;
+        }
+
+        //read footer to get to next header
+        if(read(fd, &footer, sizeof(footer)) != (ssize_t)sizeof(footer))
+        {
+            fprintf(stderr, "\nFailed to read footer for %s", filename);
+            close(ofd);
+            free(filename);
+            if(strcmp(file, "stdin") != 0)
+            {
+                close(fd);
+            }
+            exit(MEMBER_READ_FAIL);
+        }
+
+        //Chaney's order for timestamps (see lab appendix)
+        times[0] = header.st_atim;
+        times[1] = header.st_mtim;
+        fchmod(ofd, header.st_mode);
+        fsync(ofd);
+        close(ofd);
+        sync();
+        if(-1 == utimensat(AT_FDCWD, filename, times, 0))
+        {
+            fprintf(stderr, "\nFailed to set timestamps on %s", filename);
+        }
+
+        if(is_verbose)
+        {
+            fprintf(stderr, "extracted: %s\n", filename);
+        }
+        free(filename);
     }
-    fprintf(stderr, "\n");
     if(strcmp(file, "stdin") != 0)
     {
         close(fd);
     }
 }
 
-void list_long(char *file)
+void validate(char *file)
 {
-    list_short(file);
+ int fd = STDIN_FILENO;
+    folio_header_t header;
+    folio_footer_t footer;
+    unsigned char data_buf[BUF_SIZE] = {'\0'};
+    int member_num = 0;
+
+    if(strcmp(file, "stdin") != 0)
+    {
+        fd = open(file, O_RDONLY);
+        if(-1 == fd)
+        {
+            fprintf(stderr, "Failed to open %s\n", file);
+            exit(CANNOT_OPEN_FOLIO);
+        }
+        //skip past folio magic (already read for stdin)
+        if(read(fd, data_buf, strlen(FOLIO_MAGIC)) != (ssize_t)strlen(FOLIO_MAGIC))
+        {
+            fprintf(stderr, "not a folio file\n");
+            close(fd);
+            exit(BAD_MAGIC);
+        }
+    }
+
+    while(read(fd, &header, sizeof(header)) == (ssize_t)sizeof(header))
+    {
+        char *filename = NULL;
+        off_t bytes_left = header.st_size;
+        MD5_CTX header_context;
+        MD5_CTX data_context;
+        uint8_t md5_header[MD5_DIGEST_LENGTH] = {0};
+        uint8_t md5_data[MD5_DIGEST_LENGTH] = {0};
+        bool is_valid = true;
+
+        filename = malloc(sizeof(char) * header.name_length);
+        if(!filename)
+        {
+            fprintf(stderr, "\nFailed to allocate memory");
+            if(strcmp(file, "stdin") != 0)
+            {
+                close(fd);
+            }
+            exit(EXIT_FAILURE);
+        }
+        if(read(fd, filename, header.name_length) != (ssize_t)header.name_length)
+        {
+            fprintf(stderr, "\nFailed to read member name");
+            free(filename);
+            if(strcmp(file, "stdin") != 0)
+            {
+                close(fd);
+            }
+            exit(MEMBER_READ_FAIL);
+        }
+
+        //header md5 includes the name, same as archive()
+        MD5Init(&header_context);
+        MD5Update(&header_context, (const uint8_t *)&header, sizeof(header));
+        MD5Update(&header_context, (const uint8_t *)filename, header.name_length);
+        MD5Final(md5_header, &header_context);
+
+        //read data for data md5
+        MD5Init(&data_context);
+        while(bytes_left > 0)
+        {
+            size_t bytes_to_read = BUF_SIZE;
+            ssize_t bytes_read = 0;
+
+            if(bytes_left < BUF_SIZE)
+            {
+                bytes_to_read = (size_t)bytes_left;
+            }
+            bytes_read = read(fd, data_buf, bytes_to_read);
+            if(bytes_read <= 0)
+            {
+                fprintf(stderr, "\nFailed to read data for %s", filename);
+                free(filename);
+                if(strcmp(file, "stdin") != 0)
+                {
+                    close(fd);
+                }
+                exit(MEMBER_READ_FAIL);
+            }
+            MD5Update(&data_context, data_buf, bytes_read);
+            bytes_left -= bytes_read;
+        }
+        MD5Final(md5_data, &data_context);
+
+        if(read(fd, &footer, sizeof(footer)) != (ssize_t)sizeof(footer))
+        {
+            fprintf(stderr, "\nFailed to read footer for %s", filename);
+            free(filename);
+            if(strcmp(file, "stdin") != 0)
+            {
+                close(fd);
+            }
+            exit(MEMBER_READ_FAIL);
+        }
+
+        //compare against md5s stored in footer
+        //found -> what we computed, in file -> what the footer says
+        ++member_num;
+        printf("Validation for data member %d:\n", member_num);
+        if(memcmp(md5_header, footer.md5sum_header, MD5_DIGEST_LENGTH) != 0)
+        {
+            is_valid = false;
+            printf("\t*** Header MD5 does not match:\n");
+        }
+        else
+        {
+            printf("\tHeader MD5 does match:\n");
+        }
+        printf("\t\tfound:   ");
+        for(int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+        {
+            printf("%02x", md5_header[i]);
+        }
+        printf("\n\t\tin file: ");
+        for(int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+        {
+            printf("%02x", footer.md5sum_header[i]);
+        }
+        printf("\n");
+
+        if(memcmp(md5_data, footer.md5sum_data, MD5_DIGEST_LENGTH) != 0)
+        {
+            is_valid = false;
+            printf("\t*** Data MD5 does not match:\n");
+        }
+        else
+        {
+            printf("\tData MD5 does match:\n");
+        }
+        printf("\t\tfound:   ");
+        for(int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+        {
+            printf("%02x", md5_data[i]);
+        }
+        printf("\n\t\tin file: ");
+        for(int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+        {
+            printf("%02x", footer.md5sum_data[i]);
+        }
+        printf("\n");
+        if(!is_valid)
+        {
+            printf("\t*** Validation failure:        %s for member %d\n", file, member_num);
+        }
+        free(filename);
+    }
+    if(strcmp(file, "stdin") != 0)
+    {
+        close(fd);
+    }
 }
 
-//[-T] flag not actually used; Instead use [-t] and [-v] to produce [-T] results
+void list_short(char *file, bool is_long)
+{
+  int fd = STDIN_FILENO;
+    folio_header_t header;
+    unsigned char buf[BUF_SIZE] = {'\0'};
+    ssize_t bytes_read = 0;
+
+    if(strcmp(file, "stdin") != 0)
+    {
+        fd = open(file, O_RDONLY);
+        if(-1 == fd)
+        {
+            fprintf(stderr, "Failed to open %s\n", file);
+            exit(CANNOT_OPEN_FOLIO);
+        }
+        //skip past folio magic (already read for stdin)
+        if(read(fd, buf, strlen(FOLIO_MAGIC)) != (ssize_t)strlen(FOLIO_MAGIC))
+        {
+            fprintf(stderr, "not a folio file\n");
+            close(fd);
+            exit(BAD_MAGIC);
+        }
+    }
+
+    printf("Contents of folio file: \"%s\"\n", file);
+
+    while((bytes_read = read(fd, &header, sizeof(folio_header_t))) == (ssize_t)sizeof(folio_header_t))
+    {
+        char *filename = NULL;
+        off_t bytes_to_skip = header.st_size;
+
+        //[-T] needs the footer, so only skip data
+        if(!is_long)
+        {
+            bytes_to_skip += (off_t)sizeof(folio_footer_t);
+        }
+
+        filename = malloc(sizeof(char) * header.name_length);
+        if(!filename)
+        {
+            fprintf(stderr, "\nFailed to allocate memory");
+            if(strcmp(file, "stdin") != 0)
+            {
+                close(fd);
+            }
+            exit(EXIT_FAILURE);
+        }
+
+        if(read(fd, filename, header.name_length) != (ssize_t)header.name_length)
+        {
+            fprintf(stderr, "\nFailed to read member name");
+            free(filename);
+            if(strcmp(file, "stdin") != 0)
+            {
+                close(fd);
+            }
+            exit(MEMBER_READ_FAIL);
+        }
+
+        printf("\tfile name: %s\n", filename);
+
+        //lseek fails on stdin pipe -> read and toss instead
+        if(lseek(fd, bytes_to_skip, SEEK_CUR) == -1)
+        {
+            while(bytes_to_skip > 0)
+            {
+                size_t bytes_to_read = BUF_SIZE;
+
+                if(bytes_to_skip < BUF_SIZE)
+                {
+                    bytes_to_read = (size_t)bytes_to_skip;
+                }
+                bytes_read = read(fd, buf, bytes_to_read);
+                if(bytes_read <= 0)
+                {
+                    fprintf(stderr, "\nFailed to skip member %s", filename);
+                    free(filename);
+                    if(strcmp(file, "stdin") != 0)
+                    {
+                        close(fd);
+                    }
+                    exit(MEMBER_READ_FAIL);
+                }
+                bytes_to_skip -= bytes_read;
+            }
+        }
+
+        if(is_long)
+        {
+            folio_footer_t footer;
+            char mode_buf[11] = "----------";
+            char *perms = "rwxrwxrwx";
+            char time_buf[64] = {'\0'};
+            struct passwd *user = NULL;
+            struct group *group = NULL;
+
+            if(read(fd, &footer, sizeof(footer)) != (ssize_t)sizeof(footer))
+            {
+                fprintf(stderr, "\nFailed to read footer for %s", filename);
+                free(filename);
+                if(strcmp(file, "stdin") != 0)
+                {
+                    close(fd);
+                }
+                exit(MEMBER_READ_FAIL);
+            }
+
+            //build mode string (-rw-rw-r--)
+            if(S_ISDIR(header.st_mode))
+            {
+                mode_buf[0] = 'd';
+            }
+            for(int i = 0; i < 9; ++i)
+            {
+                //S_IRUSR (0400) shifted down to S_IXOTH (0001)
+                if(header.st_mode & (S_IRUSR >> i))
+                {
+                    mode_buf[i + 1] = perms[i];
+                }
+            }
+
+            printf("\t\tmode:           %s\n", mode_buf);
+
+            //print names, fall back to the id number if lookup fails
+            user = getpwuid(header.st_uid);
+            if(user)
+            {
+                printf("\t\tuser:           %s\n", user->pw_name);
+            }
+            else
+            {
+                printf("\t\tuser:           %d\n", (int)header.st_uid);
+            }
+            group = getgrgid(header.st_gid);
+            if(group)
+            {
+                printf("\t\tgroup:          %s\n", group->gr_name);
+            }
+            else
+            {
+                printf("\t\tgroup:          %d\n", (int)header.st_gid);
+            }
+
+            printf("\t\tsize:           %ld\n", (long)header.st_size);
+            //Chaney's time format -> 1965-07-08 02:10:35 PDT
+            strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S %Z", localtime(&header.st_mtim.tv_sec));
+            printf("\t\tmtime:          %s\n", time_buf);
+            strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S %Z", localtime(&header.st_atim.tv_sec));
+            printf("\t\tatime:          %s\n", time_buf);
+
+            //print md5s as hex
+            printf("\t\tmd5 sum header: ");
+            for(int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+            {
+                printf("%02x", footer.md5sum_header[i]);
+            }
+            printf("\n\t\tmd5 sum data:   ");
+            for(int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+            {
+                printf("%02x", footer.md5sum_data[i]);
+            }
+            printf("\n");
+        }
+        free(filename);
+    }
+    if(strcmp(file, "stdin") != 0)
+    {
+        close(fd);
+    }
+}
+
 void help(char *prog_name)
 {
     printf("help text");
