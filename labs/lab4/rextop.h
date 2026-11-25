@@ -1,4 +1,4 @@
-/*George Delgado
+/* George Delgado
  * gdelgado@pdx.edu
  * cs333
  * lab3

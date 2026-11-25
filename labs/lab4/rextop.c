@@ -1,4 +1,4 @@
-/*George Delgado
+/* George Delgado
  * gdelgado@pdx.edu
  * cs333
  * lab3
@@ -11,9 +11,18 @@
 #include <stdbool.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+//man times(3type) and man clock_gettime(2) used for timespec struct
 #include <time.h>
 //man poll(2) used for poll
 #include <poll.h>
+//man signal(2) used for signal
+#include <signal.h>
+//man timerfd_create(2) for timerfd
+#include <sys/timerfd.h>
+//man termios(3) for termios
+#include <termios.h>
+#include <unistd.h>
+//self created header file
 #include "rextop.h"
 
 int main(int argc, char *argv[])
@@ -30,6 +39,7 @@ int main(int argc, char *argv[])
             switch(opt)
             {
                 case MONITOR:
+                    //add method of checking
                     break;
                 case INTERVAL:
                     sscanf(optarg, "%d", &interval);
@@ -55,11 +65,21 @@ int main(int argc, char *argv[])
         }
     }
 
+    if(argc < 1)
+    {
+        fprintf(stderr, "\nNo arguments provided...");
+        exit(INVALID_CMD_OPTION);
+    }
+
     if(optind < argc)
     {
         fprintf(stderr, "\nToo many arguments provided...");
-        exit(INVALID_CMD_OPTIONS);
+        exit(INVALID_CMD_OPTION);
     }
+
+    //temp print statement
+    fprintf(stdout, "\nThe following values arguments have been provided:");
+    fprintf(stdout, "\n\t interval: %d, count: %d, width: %d\n", interval, count, width);
 }
 
 void help(char *prog_name)
